@@ -565,7 +565,8 @@ plugin decodes frame by frame with each platform's own decoder
 (AVFoundation, MediaCodec, Media Foundation, GStreamer and a browser's
 `<video>` element), and
 [`video_file_controller.dart`](https://github.com/google/flutter-mediapipe/blob/main/gallery/lib/live/video_file_controller.dart)
-runs the loop above.
+runs the loop above. For a complete video sample for every camera task, see
+the [video and live stream guide](https://github.com/google/flutter-mediapipe/blob/main/doc/guides/vision/video_and_live_stream.md).
 
 ## Live cameras
 
@@ -625,7 +626,9 @@ and boxes into a canvas. Both exist on every platform and throw
 everywhere. The package does not open a camera for your app. The
 [gallery](https://github.com/google/flutter-mediapipe/tree/main/gallery)'s
 camera mode runs every camera-capable task in live stream mode, with
-rotation, mirroring, delegate switching and overlays.
+rotation, mirroring, delegate switching and overlays. For a complete live
+stream sample for every camera task, see the
+[video and live stream guide](https://github.com/google/flutter-mediapipe/blob/main/doc/guides/vision/video_and_live_stream.md).
 
 ## CPU and GPU
 
