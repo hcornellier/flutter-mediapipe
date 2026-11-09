@@ -94,6 +94,102 @@ samples alone. Audio needs the full model, and Google's audio embeddings vary
 slightly from call to call. A retriever runs on its embedder's worker: dispose
 it before the embedder.
 
+## Images and audio
+
+Texts and images share one embedding space, so a photo can be compared with
+a caption. `embedImage` takes the encoded bytes of a JPEG or PNG, as read
+from an asset, a file picker or a download.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
+
+Future<double> captionMatch(Uint8List photo, String caption) async {
+  final embedder = await UniversalEmbedder.create(
+    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2TextVision),
+  );
+  try {
+    final image = await embedder.embedImage(photo);
+    final text = await embedder.embedText(caption);
+    return UniversalEmbedder.cosineSimilarity(
+      image.embeddings.first,
+      text.embeddings.first,
+    );
+  } finally {
+    await embedder.dispose();
+  }
+}
+```
+
+Scores across modalities run lower than between texts: against the caption
+"A dog running across the grass with a ball.", the gallery's dog photo
+scores about 0.60 and its cat photo 0.53, close to the retriever's default
+`minSimilarity` of 0.5.
+
+A Semantic Retriever indexes images the same way, and `retrieveContent`
+finds the records nearest a query made of parts, here a photo.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
+
+/// Prints the indexed [photos] nearest to [query], best first.
+Future<void> similarPhotos(
+  Map<String, Uint8List> photos,
+  Uint8List query,
+) async {
+  final embedder = await UniversalEmbedder.create(
+    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2TextVision),
+  );
+  final retriever = await SemanticRetriever.create(
+    SemanticRetrieverOptions(embedder: embedder),
+  );
+  try {
+    for (final MapEntry(key: id, value: bytes) in photos.entries) {
+      await retriever.insertImage(id, imageBytes: bytes);
+    }
+    final result = await retriever.retrieveContent([
+      ImagePart(imageBytes: query),
+    ], limit: 3);
+    for (final record in result.records) {
+      print('${record.id}: ${record.score}');
+    }
+  } finally {
+    await retriever.dispose();
+    await embedder.dispose();
+  }
+}
+```
+
+Audio needs the full model (`RetrievalModels.embeddingGemma2`). `embedAudio`
+takes mono samples in -1 to 1 at 16 kHz, the rate of the clips the package's
+tests compare with Google's Python. Google's audio embeddings vary slightly
+from call to call, so a score can move by a few thousandths.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
+
+Future<double> soundMatch(Float32List samples, String description) async {
+  final embedder = await UniversalEmbedder.create(
+    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2),
+  );
+  try {
+    final sound = await embedder.embedAudio(samples);
+    final text = await embedder.embedText(description);
+    return UniversalEmbedder.cosineSimilarity(
+      sound.embeddings.first,
+      text.embeddings.first,
+    );
+  } finally {
+    await embedder.dispose();
+  }
+}
+```
+
 ## Models
 
 `RetrievalModels` pins Google's EmbeddingGemma 2 models with a vision encoder,
