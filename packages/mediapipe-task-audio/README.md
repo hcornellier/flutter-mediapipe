@@ -314,9 +314,94 @@ Future<Float32List> speak(String text) async {
 }
 ```
 
-- To transcribe live audio, pass blocks with `endOfStream: false`, which keep
-  what is short of a segment for the next call, then call `finishStream()`.
-  `enableInterimResults: true` also returns the segment in progress.
+To transcribe live audio, such as a microphone's, pass each block to
+`transcribe` with `endOfStream: false`. Google keeps what is short of a
+segment for the next call, so a call can return no segment at all.
+`finishStream()` transcribes what is left and ends the stream; the same task
+can then start another. With `enableInterimResults: true`, a call also
+returns the segment in progress, marked `isFinal: false` and restated from
+the segment's start each time, which later audio may revise. The blocks
+below are 16 kHz, the options' default `sampleRateHz`.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_audio/mediapipe_audio.dart';
+
+/// Prints what Parakeet hears in [blocks], 16 kHz mono audio, as it hears it.
+Future<void> transcribeLive(Stream<Float32List> blocks) async {
+  final transcriber = await AudioTranscriber.create(
+    AudioTranscriberOptions(
+      model: AudioModels.parakeetTdtV3,
+      enableInterimResults: true,
+    ),
+  );
+  void show(AudioTranscriberResult result) {
+    for (final segment in result.segments) {
+      print(
+        '${segment.fromTimestampMilliseconds}-'
+        '${segment.toTimestampMilliseconds} ms '
+        '${segment.isFinal ? 'final' : 'interim'}: ${segment.transcript}',
+      );
+    }
+  }
+
+  try {
+    await for (final block in blocks) {
+      final audio = AudioData(samples: block, sampleRate: 16000);
+      show(await transcriber.transcribe(audio, endOfStream: false));
+    }
+    show(await transcriber.finishStream());
+  } finally {
+    await transcriber.dispose();
+  }
+}
+```
+
+To start playback before the whole text is synthesized, use
+`synthesizeStream`. It yields the speech in short chunks as soon as each is
+ready (80 to 320 ms of audio each with Phonon), each with its samples and the
+timestamps of the words whose audio starts in it, often none. Cancelling the
+subscription cancels Google's stream at once, abandoning the chunk in
+progress.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_audio/mediapipe_audio.dart';
+
+/// Speaks [text] with Phonon, handing each chunk to [play] as soon as it is
+/// ready. Completing [stop], from a Stop button for example, cancels the
+/// rest.
+Future<void> speakAsReady(
+  String text, {
+  required void Function(Float32List samples, int sampleRateHz) play,
+  Future<void>? stop,
+}) async {
+  final tts = await TextToSpeech.create(
+    TextToSpeechOptions(model: AudioModels.phonon),
+  );
+  final chunks = tts.synthesizeStream(text, voiceId: 'freya').listen((chunk) {
+    // Chunk 0 can start playing while the rest is synthesized.
+    play(chunk.samples, chunk.sampleRateHz);
+    for (final word in chunk.wordTimestamps) {
+      // Times count from the stream's start, not the chunk's.
+      final spoken = text.substring(word.start, word.end);
+      final at = word.startSeconds.toStringAsFixed(2);
+      print('chunk ${chunk.chunkIndex}: $spoken at $at s');
+    }
+  });
+  try {
+    await Future.any([
+      chunks.asFuture<void>(),
+      if (stop != null) stop.then((_) => chunks.cancel()),
+    ]);
+  } finally {
+    await tts.dispose();
+  }
+}
+```
+
 - `listVoices()` names the model's voices: Phonon has `freya`, `claire`,
   `lukas`, `sofia` and `lucas`. Google's guide says Phonon speaks US English
   only, though Google's 1.2.2 runtime, and so `listVoices()`, labels `claire`
@@ -324,11 +409,9 @@ Future<Float32List> speak(String text) async {
   use Kokoro (`AudioModels.kokoro`).
 - `defaultLocale` is null by default: Google infers the locale from the voice,
   as on its Web, Android and iOS tasks (its Python defaults to en-US).
-- `synthesizeStream(text)` yields a chunk per clause as soon as it is ready,
-  so playback can start early; cancelling the subscription cancels Google's
-  stream at once, abandoning the chunk in progress. `WordTimestamp.start` and
-  `end` are UTF-16 indices into the text, so `text.substring(start, end)` is
-  the word; Google reports UTF-8 byte offsets, which the package converts.
+- `WordTimestamp.start` and `end` are UTF-16 indices into the text, so
+  `text.substring(start, end)` is the word, as above; Google reports UTF-8
+  byte offsets, which the package converts.
 - `cancel()` cancels every synthesis accepted and not yet finished, like
   Google's `cancel`: a cancelled `synthesize` call fails with a
   `TaskException` of status 1 (`Synthesis cancelled.`), and a cancelled
