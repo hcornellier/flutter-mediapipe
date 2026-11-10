@@ -150,8 +150,13 @@ Future<void> similarPhotos(
   Map<String, Uint8List> photos,
   Uint8List query,
 ) async {
+  final capabilities = await queryUniversalEmbedderCapabilities();
   final embedder = await UniversalEmbedder.create(
-    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2TextVision),
+    UniversalEmbedderOptions(
+      model: RetrievalModels.embeddingGemma2TextVision,
+      // The CPU natively, the GPU in browsers.
+      delegate: capabilities.supportedDelegates.first,
+    ),
   );
   final retriever = await SemanticRetriever.create(
     SemanticRetrieverOptions(embedder: embedder),
