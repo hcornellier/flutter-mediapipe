@@ -325,6 +325,7 @@ Future<void> recognizeGesturesInVideo(Stream<Frame> frames) async {
     GestureRecognizerOptions(
       model: VisionModels.gestureRecognizer,
       runningMode: RunningMode.video,
+      numHands: 2,
     ),
   );
   try {
@@ -364,6 +365,7 @@ Future<void> recognizeGesturesLive(Stream<Frame> frames) async {
     GestureRecognizerOptions(
       model: VisionModels.gestureRecognizer,
       runningMode: RunningMode.liveStream,
+      numHands: 2,
     ),
   );
   // Listen before the first frame, as Google requires a result listener.
