@@ -13,7 +13,7 @@ generating text. Every call runs Google's official MediaPipe pipeline.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Decision Maker | `DecisionMaker` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-The runtimes are Google's MediaPipe 1.2.0: its per-family decision C
+The runtimes are Google's MediaPipe 1.2.2: its per-family decision C
 library (its release build of November 2, 2026), which this package's build
 hook downloads and checks against its SHA-256 on Android 9+, iOS 15+, macOS
 14+, Linux and Windows, on the CPU; and `@mediapipe/tasks-decision`

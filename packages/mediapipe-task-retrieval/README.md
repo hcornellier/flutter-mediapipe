@@ -15,7 +15,7 @@ pipeline.
 | Universal Embedder | `UniversalEmbedder` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Semantic Retriever | `SemanticRetriever` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-The runtimes are Google's MediaPipe 1.2.0: its per-family retrieval C
+The runtimes are Google's MediaPipe 1.2.2: its per-family retrieval C
 library, which this package's build hook downloads and checks against its
 SHA-256 on Android 9+, iOS 15+, macOS 14+, Linux and Windows, on the CPU; and
 `@mediapipe/tasks-retrieval` 1.2.2 in browsers, on the GPU delegate. Google's
