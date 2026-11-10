@@ -158,9 +158,15 @@ Future<void> similarPhotos(
       delegate: capabilities.supportedDelegates.first,
     ),
   );
-  final retriever = await SemanticRetriever.create(
-    SemanticRetrieverOptions(embedder: embedder),
-  );
+  final SemanticRetriever retriever;
+  try {
+    retriever = await SemanticRetriever.create(
+      SemanticRetrieverOptions(embedder: embedder),
+    );
+  } catch (_) {
+    await embedder.dispose();
+    rethrow;
+  }
   try {
     for (final MapEntry(key: id, value: bytes) in photos.entries) {
       await retriever.insertImage(id, imageBytes: bytes);
