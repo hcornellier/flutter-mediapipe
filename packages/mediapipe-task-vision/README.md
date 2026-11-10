@@ -532,35 +532,43 @@ decoded video file. Create the task in video mode, then submit frames with
 **strictly increasing millisecond timestamps**:
 
 ```dart
-final task = await FaceLandmarker.create(
-  FaceLandmarkerOptions(
-    model: VisionModels.faceLandmarker,
-    runningMode: RunningMode.video,
-  ),
-);
-try {
-  for (final frame in decodedFrames) {
-    final result = await task.detectForVideo(
-      VisionImage.fromPixels(
-        pixels: frame.rgba,
-        width: frame.width,
-        height: frame.height,
-        format: VisionPixelFormat.rgba,
-      ),
-      timestampMilliseconds: frame.presentationMilliseconds,
-    );
-    print(result.faceLandmarks.length);
+import 'dart:typed_data';
+
+import 'package:mediapipe_vision/mediapipe_vision.dart';
+
+typedef Frame = ({Uint8List rgba, int width, int height, int milliseconds});
+
+Future<void> countFacesInVideo(Stream<Frame> decodedFrames) async {
+  final task = await FaceLandmarker.create(
+    FaceLandmarkerOptions(
+      model: VisionModels.faceLandmarker,
+      runningMode: RunningMode.video,
+    ),
+  );
+  try {
+    await for (final frame in decodedFrames) {
+      final result = await task.detectForVideo(
+        VisionImage.fromPixels(
+          pixels: frame.rgba,
+          width: frame.width,
+          height: frame.height,
+          format: VisionPixelFormat.rgba,
+        ),
+        timestampMilliseconds: frame.milliseconds,
+      );
+      print('${frame.milliseconds} ms: ${result.faceLandmarks.length} faces');
+    }
+  } finally {
+    await task.dispose();
   }
-} finally {
-  await task.dispose();
 }
 ```
 
-Here `decodedFrames` comes from your video decoder; the package does not
-decode video. Keep a task alive across frames; do not recreate it for each
-image. Pass the file's rotation as `rotationDegrees` so results come out in
-display orientation, and since timestamps cannot go back, start a new task to
-play a file again.
+Here `decodedFrames` comes from your video decoder, each frame with its
+presentation time in milliseconds; the package does not decode video. Keep a
+task alive across frames; do not recreate it for each image. Pass the file's
+rotation as `rotationDegrees` so results come out in display orientation, and
+since timestamps cannot go back, start a new task to play a file again.
 
 The [gallery](https://github.com/google/flutter-mediapipe/tree/main/gallery)'s
 video file mode is a worked example for every camera task on all six
@@ -583,36 +591,53 @@ it, so a task slower than the camera drops frames instead of falling behind.
 mode, and a frame that runs gets the result video mode would give it.
 
 ```dart
-final task = await FaceLandmarker.create(
-  FaceLandmarkerOptions(
-    model: VisionModels.faceLandmarker,
-    runningMode: RunningMode.liveStream,
-  ),
-);
-// Listen before the first frame, as Google requires a result listener.
-final results = task.results.listen((result) {
-  print('${result.timestampMilliseconds}: ${result.faceLandmarks.length}');
-});
-cameraFrames.listen((frame) {
-  task.detectAsync(
-    VisionImage.fromPixels(
-      pixels: frame.rgba,
-      width: frame.width,
-      height: frame.height,
-      format: VisionPixelFormat.rgba,
+import 'dart:typed_data';
+
+import 'package:mediapipe_vision/mediapipe_vision.dart';
+
+typedef CameraFrame = ({Uint8List rgba, int width, int height});
+
+Future<void> countFacesLive(Stream<CameraFrame> cameraFrames) async {
+  final task = await FaceLandmarker.create(
+    FaceLandmarkerOptions(
+      model: VisionModels.faceLandmarker,
+      runningMode: RunningMode.liveStream,
     ),
-    // Stamp each frame when it arrives.
-    timestampMilliseconds: clock.elapsedMilliseconds,
   );
-});
-// Later: runs the frame in flight and the waiting one, then closes results.
-await task.dispose();
-await results.cancel();
+  // Listen before the first frame, as Google requires a result listener.
+  final results = task.results.listen((result) {
+    print('${result.timestampMilliseconds}: ${result.faceLandmarks.length}');
+  });
+  final clock = Stopwatch()..start();
+  var last = -1;
+  try {
+    await for (final frame in cameraFrames) {
+      // Stamp each frame when it arrives, but never twice with one value.
+      final now = clock.elapsedMilliseconds;
+      last = now > last ? now : last + 1;
+      task.detectAsync(
+        VisionImage.fromPixels(
+          pixels: frame.rgba,
+          width: frame.width,
+          height: frame.height,
+          format: VisionPixelFormat.rgba,
+        ),
+        timestampMilliseconds: last,
+      );
+    }
+  } finally {
+    // Runs the frame in flight and the waiting one, then closes results.
+    await task.dispose();
+    await results.cancel();
+  }
+}
 ```
 
-Here `cameraFrames` and `clock` come from your camera pipeline. The checks
-throw from `detectAsync` itself, and a frame's timestamp is reserved even if
-the frame is then dropped. When building a frame costs time, as converting a
+Here `cameraFrames` comes from your camera pipeline, and the task runs until
+that stream ends. Two frames can arrive in the same millisecond, and a repeated
+timestamp throws, so the sample gives the later one the next millisecond
+instead. The checks throw from `detectAsync` itself, and a frame's timestamp
+is reserved even if the frame is then dropped. When building a frame costs time, as converting a
 YUV camera image to RGBA does, submit `VisionImage.deferred(() => convert(frame))`
 instead: the task calls it when it starts the frame, so a dropped frame is
 never converted. Hold on to what the producer reads until then. A dropped frame never leaves the calling isolate:
