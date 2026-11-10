@@ -744,22 +744,32 @@ stream sample for every camera task, see the
 
 CPU is the default. For a task with a supported GPU path, request it when
 creating the task. Here the capability query decides, so the same code runs
-on the GPU where this package offers it and on the CPU elsewhere:
+on the GPU where this package offers it and on the CPU elsewhere, including
+a machine that refuses the GPU it was offered, such as Linux with only a
+software renderer:
 
 ```dart
 import 'package:mediapipe_vision/mediapipe_vision.dart';
 
 Future<void> countFacesFast(VisionImage image) async {
   final support = await queryFaceLandmarkerCapabilities();
-  final delegate = support.supportedDelegates.contains(Delegate.gpu)
+  var delegate = support.supportedDelegates.contains(Delegate.gpu)
       ? Delegate.gpu
       : Delegate.cpu;
-  final task = await FaceLandmarker.create(
+  Future<FaceLandmarker> create() => FaceLandmarker.create(
     FaceLandmarkerOptions(
       model: VisionModels.faceLandmarker,
       delegate: delegate,
     ),
   );
+  FaceLandmarker task;
+  try {
+    task = await create();
+  } on TaskException catch (error) {
+    if (!error.gpuUnavailable) rethrow;
+    delegate = Delegate.cpu;
+    task = await create();
+  }
   try {
     final result = await task.detect(image);
     final faces = result.faceLandmarks.length;
