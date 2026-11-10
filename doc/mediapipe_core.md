@@ -174,6 +174,25 @@ Future<void> prepareModels() async {
 }
 ```
 
+`clear` deletes every model the store holds, waiting for downloads in
+progress, as a "Remove downloaded models" setting would. A model the app
+bundles stays available: the next lookup copies it into the cache again.
+`find` looks a model up without the network and returns null when the store
+holds no copy and the app bundles none.
+
+```dart
+import 'package:mediapipe_audio/mediapipe_audio.dart';
+
+Future<void> removeDownloadedModels() async {
+  final store = ModelStore();
+  final before = await store.find(AudioModels.yamnet);
+  print('Before: ${before == null ? 'not on this device' : 'ready'}');
+  await store.clear();
+  final after = await store.find(AudioModels.yamnet);
+  print('After: ${after == null ? 'not on this device' : 'ready'}');
+}
+```
+
 Downloading needs Android's `INTERNET` permission, and a sandboxed macOS app
 needs `com.apple.security.network.client`. Bundled models and already
 verified cache entries work without network access.
