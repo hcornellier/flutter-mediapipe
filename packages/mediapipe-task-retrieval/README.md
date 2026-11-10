@@ -56,9 +56,15 @@ Future<void> search() async {
       delegate: capabilities.supportedDelegates.first,
     ),
   );
-  final retriever = await SemanticRetriever.create(
-    SemanticRetrieverOptions(embedder: embedder),
-  );
+  final SemanticRetriever retriever;
+  try {
+    retriever = await SemanticRetriever.create(
+      SemanticRetrieverOptions(embedder: embedder),
+    );
+  } catch (_) {
+    await embedder.dispose();
+    rethrow;
+  }
   try {
     await retriever.insertDocument(
       'dog',
