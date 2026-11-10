@@ -358,6 +358,40 @@ Future<void> transcribeLive(Stream<Float32List> blocks) async {
 }
 ```
 
+`prewarm()` runs Google's warm-up pass, so the first `transcribe` is not
+slower than the rest. Call it before the first clip arrives, while the app
+has time to spare.
+
+```dart
+import 'package:mediapipe_audio/mediapipe_audio.dart';
+
+/// Prints Parakeet's transcript of each of [clips], which share one rate,
+/// warming the task up first.
+Future<void> transcribeAll(List<AudioData> clips) async {
+  final transcriber = await AudioTranscriber.create(
+    AudioTranscriberOptions(
+      model: AudioModels.parakeetTdtV3,
+      sampleRateHz: clips.first.sampleRate.round(),
+    ),
+  );
+  try {
+    await transcriber.prewarm();
+    for (final clip in clips) {
+      print((await transcriber.transcribe(clip)).text);
+    }
+  } finally {
+    await transcriber.dispose();
+  }
+}
+```
+
+`modelArchitecture` picks the model family Google routes the model to:
+`TranscriberModelArchitecture.auto`, the default, reads it from the model
+file, and `omni` takes an omni model's audio path. `prompt` sets a decoding
+prompt for generative models; null keeps the model's. `cacheDirectory` names
+a directory where Google's runtime caches compiled model artifacts between
+runs; pass `':nocache'` to be sure caching is off.
+
 To start playback before the whole text is synthesized, use
 `synthesizeStream`. It yields the speech in short chunks as soon as each is
 ready (80 to 320 ms of audio each with Phonon), each with its samples and the
@@ -418,7 +452,57 @@ Future<void> speakAsReady(
   stream closes without an error after the chunks it already yielded. Calls
   made after it run as usual; with nothing in flight, or once disposed, it
   does nothing.
+- `defaultVoiceId` is the voice a call without a `voiceId` speaks in; null
+  is the model's default voice. A call's `voiceId` and `locale` override the
+  options' `defaultVoiceId` and `defaultLocale` for that call.
+- `speakingRate` sets the speed (1 is normal, 2 twice as fast, at most 4),
+  and `targetBucket` Kokoro's sequence-length bucket (64, 128 or 256 tokens,
+  or 0, the default, for the model's own capacity), which Phonon and
+  PocketTTS ignore. `cacheDirectory` is where Google's runtime caches
+  unpacked model files and compiled weights between runs.
 - Calls on one task run one at a time, in call order, on a worker isolate.
+
+The sample below picks a voice for a locale from `listVoices()` and stops
+when `stop` completes, as a Stop button would, by calling `cancel()`.
+
+```dart
+import 'dart:typed_data';
+
+import 'package:mediapipe_audio/mediapipe_audio.dart';
+
+/// Speaks [text] in the first Phonon voice for [locale], or in freya when
+/// none speaks it, and returns null if [stop] completes first.
+Future<Float32List?> speakInLocale(
+  String text,
+  String locale, {
+  Future<void>? stop,
+}) async {
+  final tts = await TextToSpeech.create(
+    TextToSpeechOptions(model: AudioModels.phonon, defaultVoiceId: 'freya'),
+  );
+  stop?.then((_) => tts.cancel());
+  try {
+    final voices = await tts.listVoices();
+    for (final voice in voices) {
+      print('${voice.voiceId} (${voice.displayName}): ${voice.locale}');
+    }
+    final voice = voices.where((v) => v.locale == locale).firstOrNull;
+    print('Speaking in ${voice?.voiceId ?? 'the default voice'}');
+    final speech = await tts.synthesize(
+      text,
+      voiceId: voice?.voiceId,
+      locale: voice?.locale,
+    );
+    return speech.samples;
+  } on TaskException catch (error) {
+    if (error.statusCode != 1) rethrow; // 1: Google's status for cancelled
+    print('Stopped');
+    return null;
+  } finally {
+    await tts.dispose();
+  }
+}
+```
 
 ### Limitations
 
