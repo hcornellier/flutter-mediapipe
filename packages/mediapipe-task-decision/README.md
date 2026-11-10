@@ -177,8 +177,10 @@ Future<void> triage(List<String> messages) async {
     for (var i = 0; i < messages.length; i++) {
       // A score's selectedKey is the index of its level, as text.
       final mood = rubric[int.parse(moods[i].selectedKey)];
-      print('"${messages[i]}" refund: ${refunds[i].value}, '
-          'topic: ${topics[i].selectedKey}, mood: $mood');
+      print(
+        '"${messages[i]}" refund: ${refunds[i].value}, '
+        'topic: ${topics[i].selectedKey}, mood: $mood',
+      );
     }
   } finally {
     await task.dispose();
