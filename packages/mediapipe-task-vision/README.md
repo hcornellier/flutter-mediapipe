@@ -218,6 +218,11 @@ once and reuse it for every image or frame.
 [Image Segmenter](#image-segmenter) ·
 [Interactive Segmenter](#interactive-segmenter)
 
+The samples use each task's defaults. For the options that add to a result,
+such as masks, blendshapes and transformation matrices, for regions of
+interest, RGB input and every task's capability query, see the
+[options and extra outputs guide](https://github.com/google/flutter-mediapipe/blob/main/doc/guides/vision/options_and_outputs.md).
+
 ### Face Detector
 
 A box in pixels and six keypoints (eyes, ears, nose, mouth) per face.
@@ -633,15 +638,31 @@ stream sample for every camera task, see the
 ## CPU and GPU
 
 CPU is the default. For a task with a supported GPU path, request it when
-creating the task:
+creating the task. Here the capability query decides, so the same code runs
+on the GPU where this package offers it and on the CPU elsewhere:
 
 ```dart
-final task = await FaceLandmarker.create(
-  FaceLandmarkerOptions(
-    model: VisionModels.faceLandmarker,
-    delegate: Delegate.gpu,
-  ),
-);
+import 'package:mediapipe_vision/mediapipe_vision.dart';
+
+Future<void> countFacesFast(VisionImage image) async {
+  final support = await queryFaceLandmarkerCapabilities();
+  final delegate = support.supportedDelegates.contains(Delegate.gpu)
+      ? Delegate.gpu
+      : Delegate.cpu;
+  final task = await FaceLandmarker.create(
+    FaceLandmarkerOptions(
+      model: VisionModels.faceLandmarker,
+      delegate: delegate,
+    ),
+  );
+  try {
+    final result = await task.detect(image);
+    final faces = result.faceLandmarks.length;
+    print('Faces found on the ${delegate.name}: $faces');
+  } finally {
+    await task.dispose();
+  }
+}
 ```
 
 The delegate is fixed for a task's lifetime. Await `dispose()` and create a
