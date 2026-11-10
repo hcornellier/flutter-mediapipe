@@ -716,14 +716,12 @@ Future<void> drawFacesLive(
         timestampMilliseconds: last,
       );
       final painted = Completer<void>();
-      web.window.requestAnimationFrame(
-        ((num _) => painted.complete()).toJS,
-      );
+      web.window.requestAnimationFrame(((num _) => painted.complete()).toJS);
       await painted.future;
     }
   } finally {
-    await overlay.detach();
-    // Runs the frame in flight and the waiting one, then closes results.
+    // Runs the frame in flight and the waiting one, still drawn, then
+    // closes results and ends the drawing.
     await task.dispose();
     await results.cancel();
   }
