@@ -227,8 +227,13 @@ Future<void> searchMedia({
   required Uint8List photo,
   required Float32List spokenQuery,
 }) async {
+  final capabilities = await queryUniversalEmbedderCapabilities();
   final embedder = await UniversalEmbedder.create(
-    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2),
+    UniversalEmbedderOptions(
+      model: RetrievalModels.embeddingGemma2,
+      // The CPU natively, the GPU in browsers.
+      delegate: capabilities.supportedDelegates.first,
+    ),
   );
   final retriever = await SemanticRetriever.create(
     SemanticRetrieverOptions(embedder: embedder),
