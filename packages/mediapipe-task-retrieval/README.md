@@ -271,8 +271,13 @@ pair it names, and `deleteWithMetadataFilter` removes those records.
 import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
 
 Future<void> todoList() async {
+  final capabilities = await queryUniversalEmbedderCapabilities();
   final embedder = await UniversalEmbedder.create(
-    UniversalEmbedderOptions(model: RetrievalModels.embeddingGemma2TextVision),
+    UniversalEmbedderOptions(
+      model: RetrievalModels.embeddingGemma2TextVision,
+      // The CPU natively, the GPU in browsers.
+      delegate: capabilities.supportedDelegates.first,
+    ),
   );
   final retriever = await SemanticRetriever.create(
     SemanticRetrieverOptions(embedder: embedder),
