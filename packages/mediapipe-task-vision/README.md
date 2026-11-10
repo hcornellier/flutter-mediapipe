@@ -653,7 +653,87 @@ it after inference, or when it drops the frame.
 `BrowserOverlay.attach(task, canvas)` lets the task's worker draw landmarks
 and boxes into a canvas. Both exist on every platform and throw
 `RuntimeUnavailableException` off the web, so one code path compiles
-everywhere. The package does not open a camera for your app. The
+everywhere.
+
+The sample below draws face landmarks on a canvas laid over a playing
+`<video>`, such as one showing a camera's `getUserMedia` stream. It names the
+page's video and canvas through [`package:web`](https://pub.dev/packages/web),
+so it compiles for browsers only: an app that uses it adds `web` to its
+pubspec and keeps the code where only its web build imports it. Frames are
+stamped with the page's clock, moved one millisecond on when two would share a
+value, as above.
+
+```dart
+import 'dart:async';
+import 'dart:js_interop';
+
+import 'package:mediapipe_vision/mediapipe_vision.dart';
+import 'package:web/web.dart' as web;
+
+/// Draws the faces in [video] into [canvas], from the task's worker, until
+/// [stop] completes.
+Future<void> drawFacesLive(
+  web.HTMLVideoElement video,
+  web.HTMLCanvasElement canvas, {
+  required Future<void> stop,
+}) async {
+  final task = await FaceLandmarker.create(
+    FaceLandmarkerOptions(
+      model: VisionModels.faceLandmarker,
+      runningMode: RunningMode.liveStream,
+    ),
+  );
+  final BrowserOverlay overlay;
+  try {
+    // The canvas belongs to the worker from now on.
+    overlay = await BrowserOverlay.attach(task, canvas);
+  } catch (_) {
+    await task.dispose();
+    rethrow;
+  }
+  overlay.configure(connections: true, points: false);
+  // Listen before the first frame, as Google requires a result listener.
+  final results = task.results.listen((result) {
+    final faces = result.faceLandmarks.length;
+    final drawn = overlay.active ? 'drawn' : 'not drawn';
+    print('${result.timestampMilliseconds}: $faces faces, $drawn');
+  });
+  var stopped = false;
+  unawaited(stop.then((_) => stopped = true));
+  var last = -1;
+  try {
+    while (!stopped) {
+      final bitmap = await web.window.createImageBitmap(video).toDart;
+      final now = web.window.performance.now().floor();
+      last = now > last ? now : last + 1;
+      // The task closes the bitmap once it has run or dropped the frame.
+      task.detectAsync(
+        VisionImage.fromBrowserFrame(
+          bitmap,
+          width: bitmap.width,
+          height: bitmap.height,
+        ),
+        timestampMilliseconds: last,
+      );
+      final painted = Completer<void>();
+      web.window.requestAnimationFrame(
+        ((num _) => painted.complete()).toJS,
+      );
+      await painted.future;
+    }
+  } finally {
+    await overlay.detach();
+    // Runs the frame in flight and the waiting one, then closes results.
+    await task.dispose();
+    await results.cancel();
+  }
+}
+```
+
+`attach` throws in a browser that cannot hand a canvas to a worker, and
+`active` turns false if the worker's drawing fails later; either way, paint
+the results from Dart instead. The package does not open a camera for your
+app. The
 [gallery](https://github.com/google/flutter-mediapipe/tree/main/gallery)'s
 camera mode runs every camera-capable task in live stream mode, with
 rotation, mirroring, delegate switching and overlays. For a complete live
