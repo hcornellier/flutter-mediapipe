@@ -297,7 +297,9 @@ Future<void> proofread() async {
     for (final edit in result.corrections) {
       print('${edit.type.name}: ${edit.text}');
     }
-    await for (final update in task.proofreadStream('I recieved your mesage.')) {
+    await for (final update in task.proofreadStream(
+      'I recieved your mesage.',
+    )) {
       if (update.chunk != null) print(update.chunk);
       if (update.done) print(update.corrections);
     }
