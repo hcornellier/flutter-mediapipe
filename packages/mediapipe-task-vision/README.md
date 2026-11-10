@@ -127,7 +127,7 @@ camera buffers before creating a `VisionImage`. On native platforms,
 `VisionImage.fromFile('/absolute/path/photo.jpg')` lets MediaPipe decode a
 file. On web, `fromFile` takes a browser-accessible URL. A Flutter asset key
 is **not** a native file path or browser URL: use `rootBundle.load` for model
-assets, as above.
+assets, as in the sample below.
 
 ### Models
 
