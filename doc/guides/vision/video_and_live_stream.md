@@ -14,8 +14,12 @@ rotation, `VisionImage.deferred` and browser frames.
 
 Each sample takes a `Stream` of `Frame` records: RGBA bytes, the size, and a
 timestamp in milliseconds (the presentation time of a video frame, or the
-time a camera frame arrived). The package does not decode video or open a
-camera, so your decoder or camera pipeline supplies them. Each sample creates
+time a camera frame arrived). Timestamps must strictly increase, and a
+repeated one throws. Camera frames that arrive in a burst can share a
+millisecond, so a pipeline that stamps frames as they arrive moves the later
+one a millisecond on, as the README's live camera sample does. The package
+does not decode video or open a camera, so your decoder or camera pipeline
+supplies them. Each sample creates
 its task with Google's pinned model, bundled as the README's
 [quick start](../../../packages/mediapipe-task-vision/README.md#quick-start-detect-face-landmarks)
 describes, runs until the stream ends and disposes the task. In an app, create
