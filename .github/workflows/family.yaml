@@ -272,6 +272,10 @@ jobs:
       - name: Build the release gallery
         working-directory: gallery
         run: flutter build web --release --base-href /flutter-mediapipe/ --no-web-resources-cdn
+      # Google's runtimes, which the journey answers the gallery's jsDelivr
+      # requests from (local_network.mjs): jsDelivr's 503s failed Retrieval's
+      # journey on 2026-10-15 and 2026-11-16.
+      - uses: ./.github/actions/web-runtime
       - name: Start the gallery server
         run: |
           nohup python3 -B gallery/tool/web_server.py > web-server.log 2>&1 &
