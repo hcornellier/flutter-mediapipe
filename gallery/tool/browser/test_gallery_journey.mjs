@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {chromium, firefox, webkit} from 'playwright';
+import {keepLocal} from './local_network.mjs';
 import {isLostPage, saveSystemLog} from './lost_page.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -98,6 +99,7 @@ const browser = await ({chromium, firefox, webkit}[browserName]).launch({
     ...(linux ? {'webgl.force-enabled': true} : {}),
   }} : {}),
 });
+keepLocal(browser, base);
 browser.on('disconnected', () => lifecycle('browser disconnected'));
 let page;
 let hardwareWebGpu = false;
