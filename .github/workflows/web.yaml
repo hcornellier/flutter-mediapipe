@@ -70,8 +70,11 @@ jobs:
         working-directory: gallery/tool/browser
         run: |
           npm ci
-          npx playwright install chromium firefox webkit
           npx playwright install-deps --dry-run chromium firefox webkit
+      - name: Install Chromium, Firefox and WebKit
+        uses: ./.github/actions/playwright-browsers
+        with:
+          browsers: chromium firefox webkit
       - name: Analyze and test vision browser code
         working-directory: packages/mediapipe-task-vision
         run: |
@@ -313,11 +316,13 @@ jobs:
           cache-dependency-path: gallery/tool/browser/package-lock.json
       - name: Prepare official web runtime and models
         run: dart run tool/gallery_builder/bin/prepare_gallery.dart --target web
-      - name: Install WebKit
+      - name: Install the browser tests' packages
         working-directory: gallery/tool/browser
-        run: |
-          npm ci
-          npx playwright install webkit
+        run: npm ci
+      - name: Install WebKit
+        uses: ./.github/actions/playwright-browsers
+        with:
+          browsers: webkit
       # As in the browser job.
       - uses: ./.github/actions/web-runtime
       - name: Build release gallery and API probe
@@ -421,8 +426,11 @@ jobs:
           python3 -B gallery/tool/browser/prepare_camera.py
           cd gallery/tool/browser
           npm ci
-          npx playwright install --no-shell chromium
           npx playwright install-deps --dry-run chromium
+      - name: Install Chromium
+        uses: ./.github/actions/playwright-browsers
+        with:
+          browsers: --no-shell chromium
       # A longer first load, then one retry on a fresh browser, with a warning in
       # the log and report.json. Only here: the page has only just been deployed.
       # A failed check is never retried, and a deploy that never loads still fails.

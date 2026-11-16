@@ -109,8 +109,11 @@ jobs:
           BROWSER: ${{ matrix.browser }}
         run: |
           npm ci
-          npx playwright install "$BROWSER"
           if [ "$RUNNER_OS" = Linux ]; then npx playwright install-deps --dry-run "$BROWSER"; fi
+      - name: Install Playwright's ${{ matrix.browser }}
+        uses: ./.github/actions/playwright-browsers
+        with:
+          browsers: ${{ matrix.browser }}
       - name: Build the speech probe
         working-directory: gallery
         run: |

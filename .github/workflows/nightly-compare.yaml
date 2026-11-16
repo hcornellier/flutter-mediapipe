@@ -245,9 +245,11 @@ jobs:
           python3 -B gallery/tool/browser/prepare_camera.py
       - name: Install browser test dependencies
         working-directory: gallery/tool/browser
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium webkit
+        run: npm ci
+      - name: Install Chromium and WebKit
+        uses: ./.github/actions/playwright-browsers
+        with:
+          browsers: --with-deps chromium webkit
       # This side's runtimes, which the browser tests answer the pages' jsDelivr
       # requests from, as in web.yaml.
       - uses: ./.github/actions/web-runtime
