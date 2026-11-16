@@ -1,3 +1,19 @@
+## 0.4.0
+
+- Upgrade every mediapipe package to 0.4.0 together, so this package now
+  requires `mediapipe_core` ^0.4.0, which pins Google's Linux arm64
+  libraries. MediaPipe stays at 1.2.3.
+- Adds Linux arm64 (aarch64): every text task runs there on the CPU, as
+  it does on Linux x64.
+- Linux arm64 needs glibc 2.27 or later (Raspberry Pi OS Bullseye,
+  Ubuntu 18.04 and later) and, even on the CPU, EGL and OpenGL ES:
+  `sudo apt-get install libegl1 libgles2`, which Raspberry Pi OS Lite
+  lacks. Google's library uses Arm's LSE atomic and RCPC load
+  instructions, which a Raspberry Pi 5 (Cortex-A76) has and a Raspberry
+  Pi 4 or older (Cortex-A72 or earlier) lacks: it runs on a Pi 5 and
+  stops with an illegal instruction on a Pi 4.
+- CI runs every text task on GitHub's `ubuntu-24.04-arm` runners.
+
 ## 0.3.0
 
 - Upgrade every mediapipe package to 0.3.0 together. MediaPipe 1.2.3
