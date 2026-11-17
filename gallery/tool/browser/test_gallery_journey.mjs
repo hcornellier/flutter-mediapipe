@@ -331,12 +331,18 @@ try {
       await page.locator('[flt-semantics-identifier="universal-2-samples"]')
         .getByRole('button', {name: 'Elephant', exact: true}).click();
       await page.getByRole('img', {name: 'Image 2: Elephant'}).or(page.getByText('Image 2: Elephant')).first().waitFor({timeout: 120000});
-      await page.getByRole('button', {name: 'Compare', exact: true}).click();
+      // The label follows the tap at once, but the photo the page embeds only
+      // once its asset has loaded, so a comparison started before then
+      // measures the dog again. Compare again until the similarity changes.
       const deadline = Date.now() + 120000;
       let elephant = dog;
       while (elephant === dog && Date.now() < deadline) {
-        await page.waitForTimeout(500);
-        elephant = await value();
+        await page.getByRole('button', {name: 'Compare', exact: true}).click();
+        const retry = Date.now() + 10000;
+        while (elephant === dog && Date.now() < Math.min(retry, deadline)) {
+          await page.waitForTimeout(500);
+          elephant = await value();
+        }
       }
       assert.ok(elephant < dog, `${id}: dog text vs dog photo ${dog}, vs elephant ${elephant}`);
       report.checks.push(`${id}:cpu:compare`);
