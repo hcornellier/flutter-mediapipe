@@ -153,13 +153,14 @@ try {
     page.getByText(new RegExp(`^(?!0\\.0 fps)\\d+\\.\\d fps · \\d+ ms · ${delegate.toUpperCase()}$`));
   // A runtime that embeds every input as zeros scores every option the same,
   // and a tie reads as the first option, so options whose score rows ("shipping
-  // 0.87") all read the same fail here.
+  // 0.87") all read the same fail here. The rows are read together, since a
+  // running game can show its next decision between two reads.
   const assertScoresDiffer = async (names, what) => {
-    const scores = [];
     for (const name of names) {
-      const row = (await page.getByText(new RegExp(`^${name} \\d\\.\\d{2}$`)).first().textContent()) ?? '';
-      scores.push(row.slice(name.length + 1));
+      await page.getByText(new RegExp(`^${name} \\d\\.\\d{2}$`)).first().waitFor();
     }
+    const rows = await page.getByText(new RegExp(`^(${names.join('|')}) \\d\\.\\d{2}$`)).allTextContents();
+    const scores = names.map(name => rows.find(row => row.startsWith(`${name} `))?.slice(name.length + 1));
     assert.ok(new Set(scores).size > 1,
       `${what}: every option scored ${scores[0]}, as when Google's runtime embeds every input as zeros`);
   };
