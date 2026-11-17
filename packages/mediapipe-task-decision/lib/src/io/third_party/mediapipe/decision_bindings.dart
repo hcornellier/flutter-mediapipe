@@ -21,6 +21,23 @@ final class MpBooleanQuestion extends Struct {
   external double temperature;
   @Bool()
   external bool normalizePrior;
+  // Example-based classification and fitted heads, which Google added after
+  // MediaPipe 1.2.3 and this package leaves null and zero. These fields are
+  // not in the 1.2.3 header in packages/mediapipe-core/native/include; they
+  // follow decision_maker.h on MediaPipe's main branch. A library that
+  // predates them never reads them; one built after them reads all of them,
+  // so every trailing field must be declared here.
+  external Pointer<Pointer<Char>> positiveExamples;
+  @Int32()
+  external int positiveExamplesCount;
+  external Pointer<Pointer<Char>> negativeExamples;
+  @Int32()
+  external int negativeExamplesCount;
+  @Int32()
+  external int inputPrompt;
+  external Pointer<Uint8> fittedHead;
+  @Int32()
+  external int fittedHeadLength;
 }
 
 final class MpChoiceQuestion extends Struct {
@@ -40,6 +57,17 @@ final class MpChoiceQuestion extends Struct {
   external Pointer<Int32> imageBytesLengths;
   external Pointer<Pointer<Float>> audioSamples;
   external Pointer<Int32> audioSamplesLengths;
+  // Example-based classification and fitted heads, as on MpBooleanQuestion:
+  // added after MediaPipe 1.2.3 and left null and zero.
+  external Pointer<Pointer<Pointer<Char>>> examples;
+  external Pointer<Int32> exampleCounts;
+  @Int32()
+  external int inputPrompt;
+  @Bool()
+  external bool omitBalancedClassWeights;
+  external Pointer<Uint8> fittedHead;
+  @Int32()
+  external int fittedHeadLength;
 }
 
 final class MpScoreQuestion extends Struct {
@@ -85,6 +113,9 @@ final class MpDecisionMakerOptions extends Struct {
   external MpBaseOptions baseOptions;
   @Int32()
   external int maxNumTokens;
+  // Added after MediaPipe 1.2.3, as the fields above; left false.
+  @Bool()
+  external bool skipHeadCompatibilityCheck;
 }
 
 /// Google's error string, which the caller frees with [errorFree].
