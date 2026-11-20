@@ -1,0 +1,38 @@
+name: 10x vision-capabilities (throwaway)
+
+on:
+  push:
+    branches: [ci/v050-10x-vision-capabilities]
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: vision-capabilities / ${{ matrix.os }} x10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'false'
+          linux-profile: ffi
+      - name: Pub get
+        working-directory: packages/mediapipe-task-vision
+        shell: bash
+        run: if [ -f pubspec.yaml ]; then flutter pub get; fi
+      - name: vision-capabilities x10 in a row
+        working-directory: packages/mediapipe-task-vision
+        shell: bash
+        run: |
+          pass=0
+          for i in $(seq 1 10); do
+            if dart test test/capabilities_test.dart --reporter expanded; then pass=$((pass+1)); echo "COUNT_RUN $i pass"; else echo "COUNT_RUN $i FAIL"; fi
+          done
+          echo "COUNT vision-capabilities ${{ matrix.os }} $pass of 10"
+          [ "$pass" = 10 ]
