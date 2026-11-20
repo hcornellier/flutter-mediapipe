@@ -1,0 +1,40 @@
+name: 10x audio-reference (throwaway)
+
+on:
+  push:
+    branches: [ci/v050-10x-audio-reference]
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: audio-reference / ${{ matrix.os }} #${{ matrix.run }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04, windows-2025, ubuntu-24.04-arm, windows-11-arm]
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'false'
+          linux-profile: ffi
+      - name: Download Google's models
+        working-directory: packages/mediapipe-task-retrieval
+        shell: bash
+        run: |
+          flutter pub get
+          dart tool/download_models.dart
+      - name: Pub get
+        working-directory: packages/mediapipe-task-retrieval
+        shell: bash
+        run: if [ -f pubspec.yaml ]; then flutter pub get; fi
+      - name: audio-reference
+        working-directory: packages/mediapipe-task-retrieval
+        shell: bash
+        run: |
+          dart test test/native_audio_reference_test.dart --timeout 180s --reporter expanded
