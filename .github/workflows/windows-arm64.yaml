@@ -11,9 +11,7 @@ permissions:
 # family.yaml, desktop.yaml, bundled-models.yaml and samples.yaml.
 on:
   push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+    branches: [ci/v050-windows-arm64-hooks]
 
 # Keyed by commit on main: GitHub marks a commit failed when a run is cancelled.
 concurrency:
