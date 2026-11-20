@@ -1,0 +1,38 @@
+name: MF edit-list diagnostic (throwaway)
+
+# Which Media Foundation layer drops scene.mp4's edit list, and whether it is
+# Windows 11 or arm64 that does: the same program built for x64 and arm64 on
+# the Windows 11 arm64 runner (x64 under emulation), and for x64 on the
+# Windows Server runners as controls. tool/diag/mf_edit_list.cpp.
+on:
+  push:
+    branches: [diag/mf-edit-list]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    name: ${{ matrix.os }} / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-11-arm, arch: arm64, vcvars: amd64_arm64}
+          - {os: windows-11-arm, arch: x64, vcvars: amd64}
+          - {os: windows-2025, arch: x64, vcvars: amd64}
+          - {os: windows-2022, arch: x64, vcvars: amd64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build and run
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSROOT=%%i"
+          echo VSROOT=%VSROOT%
+          call "%VSROOT%\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.vcvars }} || exit /b 1
+          cl /nologo /EHsc /W4 /O2 tool\diag\mf_edit_list.cpp /Fe:mf_edit_list.exe || exit /b 1
+          dumpbin /headers mf_edit_list.exe | findstr /i "machine"
+          mf_edit_list.exe "%CD%\gallery\samples\scene.mp4" "%CD%\gallery\samples\rotated.mp4" || exit /b 1
