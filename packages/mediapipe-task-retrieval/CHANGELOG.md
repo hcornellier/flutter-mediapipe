@@ -1,3 +1,9 @@
+## 0.4.2
+
+- Upgrade every mediapipe package to 0.4.2 together, so this package now
+  requires `mediapipe_core` ^0.4.2. MediaPipe stays at 1.2.3.
+- No change to this package, whose models already came from Hugging Face.
+
 ## 0.4.1
 
 - Upgrade every mediapipe package to 0.4.1 together, so this package now
