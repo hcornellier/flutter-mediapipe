@@ -1,0 +1,38 @@
+name: 10x family-runtimes (throwaway)
+
+on:
+  push:
+    branches: [ci/v050-10x-family-runtimes]
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: family-runtimes / ${{ matrix.os }} x10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, ubuntu-24.04-arm, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'false'
+          linux-profile: ffi
+      - name: Pub get
+        working-directory: packages/mediapipe-core
+        shell: bash
+        run: if [ -f pubspec.yaml ]; then flutter pub get; fi
+      - name: family-runtimes x10 in a row
+        working-directory: packages/mediapipe-core
+        shell: bash
+        run: |
+          pass=0
+          for i in $(seq 1 10); do
+            if dart test test/native_assets/family_runtimes_test.dart --reporter expanded; then pass=$((pass+1)); echo "COUNT_RUN $i pass"; else echo "COUNT_RUN $i FAIL"; fi
+          done
+          echo "COUNT family-runtimes ${{ matrix.os }} $pass of 10"
+          [ "$pass" = 10 ]
