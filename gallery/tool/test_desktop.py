@@ -61,8 +61,12 @@ def main():
                  'audio_task_test', 'face_landmarker_still_image_test',
                  'task_models_test',
                  'gallery_journey_test']:
+        # The journey first downloads every first-use model, each within its
+        # own limit (gallery_journey_test.dart): up to 19 minutes on Linux
+        # x64 (November 20, 2026), so it gets 40.
         run(['flutter', 'test', '-d', target,
-             f'integration_test/{name}.dart', '--reporter', 'expanded'], name)
+             f'integration_test/{name}.dart', '--reporter', 'expanded'], name,
+            timeout=2400 if name == 'gallery_journey_test' else 1200)
     for task in ['face', 'hand']:
         run(['flutter', 'test', '-d', target,
              'integration_test/desktop_cpu_camera_test.dart',
