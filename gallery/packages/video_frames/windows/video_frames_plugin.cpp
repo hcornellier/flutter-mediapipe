@@ -100,15 +100,39 @@ std::optional<BoxRange> FindBox(FILE* file, int64_t start, int64_t end,
   return std::nullopt;
 }
 
-// Where the first video track's edit list starts its media, in microseconds,
-// or 0. An encoder that reorders frames (H.264 B-frames) writes the reorder
-// delay there, 66.7 ms for two frames at 30 a second, so that the first frame
-// shows at zero. Windows Server 2025's Media Foundation applies it; Windows 11
-// arm64's IMFSourceReader returns the unshifted media timestamps.
-int64_t EditListStartUs(const std::wstring& wide_path) {
+// Reads the version and a 32-bit timescale from a full box whose version 0
+// layout has [skip0] bytes, and version 1 layout [skip1] bytes, between its
+// version and flags and the timescale (mvhd and mdhd).
+bool ReadTimescale(FILE* file, const BoxRange& box, int skip0, int skip1,
+                   uint32_t* timescale) {
+  uint32_t version_flags = 0;
+  if (_fseeki64(file, box.start, SEEK_SET) != 0 ||
+      !ReadBe32(file, &version_flags) ||
+      _fseeki64(file, (version_flags >> 24) == 1 ? skip1 : skip0, SEEK_CUR) !=
+          0 ||
+      !ReadBe32(file, timescale)) {
+    return false;
+  }
+  return *timescale != 0;
+}
+
+// When the first video track has an edit list, when the list shows the
+// track's first frame, in microseconds: the length of its leading empty edits,
+// 0 for most files. Null without an edit list, or when the file cannot be
+// read; the decoder's timestamps then stand.
+//
+// An encoder that reorders frames (H.264 B-frames) starts the track's media
+// later, 66.7 ms for two frames at 30 a second, and writes an edit list that
+// shows that first frame at zero. Windows versions disagree on it in the
+// MPEG-4 source itself, measured with the gallery's clips: Server 2025
+// (26100) applies it, Windows 11 25H2 (26200) ignores it on arm64 and x64
+// alike, and Server 2022 (20348) moves the frames later by it instead of
+// earlier. The reader therefore puts the first frame where the list says,
+// whatever the decoder reported for it.
+std::optional<int64_t> EditListFirstFrameUs(const std::wstring& wide_path) {
   FILE* raw = nullptr;
   if (_wfopen_s(&raw, wide_path.c_str(), L"rb") != 0 || raw == nullptr) {
-    return 0;
+    return std::nullopt;
   }
   struct FileCloser {
     void operator()(FILE* handle) const {
@@ -116,11 +140,18 @@ int64_t EditListStartUs(const std::wstring& wide_path) {
     }
   };
   std::unique_ptr<FILE, FileCloser> file(raw);
-  if (_fseeki64(file.get(), 0, SEEK_END) != 0) return 0;
+  if (_fseeki64(file.get(), 0, SEEK_END) != 0) return std::nullopt;
   const int64_t length = _ftelli64(file.get());
-  if (length <= 0) return 0;
+  if (length <= 0) return std::nullopt;
   const auto moov = FindBox(file.get(), 0, length, "moov");
-  if (!moov) return 0;
+  if (!moov) return std::nullopt;
+  // Empty edits are in the movie's timescale: version and flags, then
+  // creation and modification times.
+  const auto mvhd = FindBox(file.get(), moov->start, moov->end, "mvhd");
+  uint32_t movie_timescale = 0;
+  if (!mvhd || !ReadTimescale(file.get(), *mvhd, 8, 16, &movie_timescale)) {
+    return std::nullopt;
+  }
   for (int64_t at = moov->start;;) {
     const auto trak = FindBox(file.get(), at, moov->end, "trak");
     if (!trak) break;
@@ -136,52 +167,52 @@ int64_t EditListStartUs(const std::wstring& wide_path) {
     if (!ReadBe32(file.get(), &handler) || handler != 0x76696465u /* vide */) {
       continue;
     }
-    const auto mdhd = FindBox(file.get(), mdia->start, mdia->end, "mdhd");
     const auto edts = FindBox(file.get(), trak->start, trak->end, "edts");
     const auto elst =
         edts ? FindBox(file.get(), edts->start, edts->end, "elst")
              : std::nullopt;
-    if (!mdhd || !elst) return 0;
-    if (_fseeki64(file.get(), mdhd->start, SEEK_SET) != 0) return 0;
-    uint32_t mdhd_version_flags = 0;
-    if (!ReadBe32(file.get(), &mdhd_version_flags)) return 0;
-    const uint32_t mdhd_version = mdhd_version_flags >> 24;
-    if (_fseeki64(file.get(), mdhd_version == 1 ? 16 : 8, SEEK_CUR) != 0) {
-      return 0;
-    }
-    uint32_t timescale = 0;
-    if (!ReadBe32(file.get(), &timescale) || timescale == 0) return 0;
-    if (_fseeki64(file.get(), elst->start, SEEK_SET) != 0) return 0;
-    uint32_t elst_version_flags = 0;
+    if (!elst) return std::nullopt;
+    if (_fseeki64(file.get(), elst->start, SEEK_SET) != 0) return std::nullopt;
+    uint32_t version_flags = 0;
     uint32_t entries = 0;
-    if (!ReadBe32(file.get(), &elst_version_flags) ||
+    if (!ReadBe32(file.get(), &version_flags) ||
         !ReadBe32(file.get(), &entries)) {
-      return 0;
+      return std::nullopt;
     }
-    const uint32_t elst_version = elst_version_flags >> 24;
+    const bool wide = (version_flags >> 24) == 1;
+    uint64_t empty = 0;
     for (uint32_t i = 0; i < entries; i++) {
+      uint64_t duration = 0;
       int64_t media_time = -1;
-      if (elst_version == 1) {
-        if (_fseeki64(file.get(), 8, SEEK_CUR) != 0) return 0;
+      if (wide) {
         uint64_t raw_time = 0;
-        if (!ReadBe64(file.get(), &raw_time)) return 0;
+        if (!ReadBe64(file.get(), &duration) || !ReadBe64(file.get(), &raw_time)) {
+          return std::nullopt;
+        }
         media_time = static_cast<int64_t>(raw_time);
       } else {
-        if (_fseeki64(file.get(), 4, SEEK_CUR) != 0) return 0;
+        uint32_t duration32 = 0;
         uint32_t raw_time = 0;
-        if (!ReadBe32(file.get(), &raw_time)) return 0;
+        if (!ReadBe32(file.get(), &duration32) || !ReadBe32(file.get(), &raw_time)) {
+          return std::nullopt;
+        }
+        duration = duration32;
         media_time = static_cast<int32_t>(raw_time);
       }
-      // Skip media_rate_integer and media_rate_fraction.
-      if (_fseeki64(file.get(), 4, SEEK_CUR) != 0) return 0;
+      // media_rate_integer and media_rate_fraction.
+      if (_fseeki64(file.get(), 4, SEEK_CUR) != 0) return std::nullopt;
       if (media_time >= 0) {
-        if (media_time > INT64_MAX / 1000000LL) return 0;
-        return (media_time * 1000000LL) / static_cast<int64_t>(timescale);
+        if (empty > static_cast<uint64_t>(INT64_MAX) / 1000000ULL) {
+          return std::nullopt;
+        }
+        return static_cast<int64_t>(empty * 1000000ULL / movie_timescale);
       }
+      // An empty edit: the track shows nothing for its duration.
+      empty += duration;
     }
-    return 0;
+    return std::nullopt;
   }
-  return 0;
+  return std::nullopt;
 }
 
 }  // namespace
@@ -254,7 +285,7 @@ class VideoFileReader {
       reader->duration_us_ = static_cast<int64_t>(duration.uhVal.QuadPart / 10);
     }
     PropVariantClear(&duration);
-    reader->shift_us_ = EditListStartUs(wide_path);
+    reader->first_frame_us_ = EditListFirstFrameUs(wide_path);
     return reader;
   }
 
@@ -312,16 +343,12 @@ class VideoFileReader {
       if (pixels.empty()) continue;
       // 100-nanosecond units.
       int64_t timestamp_us = static_cast<int64_t>(timestamp / 10);
-      if (!shifted_) {
-        // Never shift past the first frame, so Windows decoders that already
-        // apply the edit list keep zero-based timestamps and no timestamp goes
-        // negative.
-        if (timestamp_us < shift_us_) {
-          shift_us_ = timestamp_us > 0 ? timestamp_us : 0;
-        }
-        shifted_ = true;
+      if (first_frame_us_) {
+        // Decoded frames come in presentation order, so the first is the one
+        // the edit list places; see EditListFirstFrameUs.
+        if (!shift_us_) shift_us_ = timestamp_us - *first_frame_us_;
+        timestamp_us -= *shift_us_;
       }
-      timestamp_us -= shift_us_;
       EncodableList plane = {EncodableValue(std::move(pixels)),
                              EncodableValue(static_cast<int32_t>(width_ * 4)),
                              EncodableValue(4)};
@@ -405,8 +432,10 @@ class VideoFileReader {
   int rotation_ = 0;
   int64_t duration_us_ = 0;
   double frame_rate_ = 0;
-  int64_t shift_us_ = 0;
-  bool shifted_ = false;
+  // Where the edit list shows the first frame, and how far the decoder's
+  // timestamps are from it, set from the first frame.
+  std::optional<int64_t> first_frame_us_;
+  std::optional<int64_t> shift_us_;
 };
 
 // static
