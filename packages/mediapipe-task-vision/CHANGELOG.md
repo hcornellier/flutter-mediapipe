@@ -1,3 +1,14 @@
+## 0.5.0
+
+- Upgrade every mediapipe package to 0.5.0 together, so this package now
+  requires `mediapipe_core` ^0.5.0, which pins Google's Windows arm64
+  libraries. MediaPipe stays at 1.2.3.
+- Adds Windows arm64: the 10 vision tasks supported on Windows x64 run
+  there on the CPU, with the same capabilities and `tasks` build-setting
+  checks (Interactive Segmenter remains unavailable on Windows).
+- CI runs the vision tasks, bundled models and the object detection
+  sample on GitHub's `windows-11-arm` runners.
+
 ## 0.4.2
 
 - Upgrade every mediapipe package to 0.4.2 together, so this package now

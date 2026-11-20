@@ -1,3 +1,20 @@
+## 0.5.0
+
+- Upgrade every mediapipe package to 0.5.0 together. Adds Windows arm64:
+  each family's hook bundles Google's MediaPipe 1.2.3 `windows_arm64`
+  DLL, from the same archive as the other platforms and pinned by SHA-256
+  like them. MediaPipe stays at 1.2.3 and its option structs keep their
+  layout, so the build still accepts family releases from 0.3.0.
+- Windows arm64 runs every supported Windows task on the CPU, as Windows
+  x64 does.
+- On a Windows arm64 machine, install Flutter from its git repository in
+  native ARM64 PowerShell so Flutter fetches the native `windows-arm64`
+  Dart SDK and builds `windows/arm64` natively: Flutter's Windows SDK
+  archive ships only an x64 Dart SDK.
+- CI adds GitHub's `windows-11-arm` runner for every family's tests, the
+  native hook tests, bundled models, the object detection sample and the
+  gallery's desktop tests.
+
 ## 0.4.2
 
 - Upgrade every mediapipe package to 0.4.2 together. MediaPipe stays at

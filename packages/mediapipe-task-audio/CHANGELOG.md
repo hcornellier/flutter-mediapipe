@@ -1,3 +1,13 @@
+## 0.5.0
+
+- Upgrade every mediapipe package to 0.5.0 together, so this package now
+  requires `mediapipe_core` ^0.5.0, which pins Google's Windows arm64
+  libraries. MediaPipe stays at 1.2.3.
+- Adds Windows arm64: Audio Classifier, Audio Transcriber and Text to
+  Speech run there on the CPU, as on Windows x64.
+- CI runs every audio task on GitHub's `windows-11-arm` runners, against
+  references from Google's `win_arm64` Python wheels.
+
 ## 0.4.2
 
 - Upgrade every mediapipe package to 0.4.2 together, so this package now
