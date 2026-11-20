@@ -1,0 +1,38 @@
+name: 10x pin-nightly (throwaway)
+
+on:
+  push:
+    branches: [ci/v050-10x-pin-nightly]
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: pin-nightly / ${{ matrix.os }} x10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'true'
+          linux-profile: ffi
+      - name: Pub get
+        working-directory: .
+        shell: bash
+        run: if [ -f pubspec.yaml ]; then flutter pub get; fi
+      - name: pin-nightly x10 in a row
+        working-directory: .
+        shell: bash
+        run: |
+          pass=0
+          for i in $(seq 1 10); do
+            if python3 -B -m unittest packages/mediapipe-core/tool/test_pin_nightly.py; then pass=$((pass+1)); echo "COUNT_RUN $i pass"; else echo "COUNT_RUN $i FAIL"; fi
+          done
+          echo "COUNT pin-nightly ${{ matrix.os }} $pass of 10"
+          [ "$pass" = 10 ]
