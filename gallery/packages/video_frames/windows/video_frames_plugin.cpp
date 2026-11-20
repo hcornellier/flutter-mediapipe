@@ -43,6 +43,147 @@ std::string Describe(const char* what, HRESULT status) {
   return std::string(what) + " failed (" + code + ")";
 }
 
+struct BoxRange {
+  int64_t start;
+  int64_t end;
+};
+
+bool ReadBytes(FILE* file, uint8_t* out, size_t count) {
+  return fread(out, 1, count, file) == count;
+}
+
+bool ReadBe32(FILE* file, uint32_t* out) {
+  uint8_t bytes[4];
+  if (!ReadBytes(file, bytes, 4)) return false;
+  *out = (static_cast<uint32_t>(bytes[0]) << 24) |
+         (static_cast<uint32_t>(bytes[1]) << 16) |
+         (static_cast<uint32_t>(bytes[2]) << 8) | static_cast<uint32_t>(bytes[3]);
+  return true;
+}
+
+bool ReadBe64(FILE* file, uint64_t* out) {
+  uint32_t high = 0;
+  uint32_t low = 0;
+  if (!ReadBe32(file, &high) || !ReadBe32(file, &low)) return false;
+  *out = (static_cast<uint64_t>(high) << 32) | low;
+  return true;
+}
+
+std::optional<BoxRange> FindBox(FILE* file, int64_t start, int64_t end,
+                                const char type[4]) {
+  for (int64_t at = start; at + 8 <= end;) {
+    if (_fseeki64(file, at, SEEK_SET) != 0) return std::nullopt;
+    uint32_t size32 = 0;
+    uint8_t name[4];
+    if (!ReadBe32(file, &size32) || !ReadBytes(file, name, 4)) {
+      return std::nullopt;
+    }
+    int64_t size = size32;
+    int64_t header = 8;
+    if (size == 1) {
+      uint64_t size64 = 0;
+      if (!ReadBe64(file, &size64) ||
+          size64 > static_cast<uint64_t>(end - at)) {
+        return std::nullopt;
+      }
+      size = static_cast<int64_t>(size64);
+      header = 16;
+    } else if (size == 0) {
+      size = end - at;
+    }
+    if (size < header || size > end - at) return std::nullopt;
+    if (memcmp(name, type, 4) == 0) {
+      return BoxRange{at + header, at + size};
+    }
+    at += size;
+  }
+  return std::nullopt;
+}
+
+// Where the first video track's edit list starts its media, in microseconds,
+// or 0. An encoder that reorders frames (H.264 B-frames) writes the reorder
+// delay there, 66.7 ms for two frames at 30 a second, so that the first frame
+// shows at zero. Windows Server 2025's Media Foundation applies it; Windows 11
+// arm64's IMFSourceReader returns the unshifted media timestamps.
+int64_t EditListStartUs(const std::wstring& wide_path) {
+  FILE* raw = nullptr;
+  if (_wfopen_s(&raw, wide_path.c_str(), L"rb") != 0 || raw == nullptr) {
+    return 0;
+  }
+  struct FileCloser {
+    void operator()(FILE* handle) const {
+      if (handle != nullptr) fclose(handle);
+    }
+  };
+  std::unique_ptr<FILE, FileCloser> file(raw);
+  if (_fseeki64(file.get(), 0, SEEK_END) != 0) return 0;
+  const int64_t length = _ftelli64(file.get());
+  if (length <= 0) return 0;
+  const auto moov = FindBox(file.get(), 0, length, "moov");
+  if (!moov) return 0;
+  for (int64_t at = moov->start;;) {
+    const auto trak = FindBox(file.get(), at, moov->end, "trak");
+    if (!trak) break;
+    at = trak->end;
+    const auto mdia = FindBox(file.get(), trak->start, trak->end, "mdia");
+    const auto hdlr =
+        mdia ? FindBox(file.get(), mdia->start, mdia->end, "hdlr")
+             : std::nullopt;
+    if (!hdlr || hdlr->end - hdlr->start < 12) continue;
+    // Version and flags, pre_defined, then the handler type.
+    if (_fseeki64(file.get(), hdlr->start + 8, SEEK_SET) != 0) continue;
+    uint32_t handler = 0;
+    if (!ReadBe32(file.get(), &handler) || handler != 0x76696465u /* vide */) {
+      continue;
+    }
+    const auto mdhd = FindBox(file.get(), mdia->start, mdia->end, "mdhd");
+    const auto edts = FindBox(file.get(), trak->start, trak->end, "edts");
+    const auto elst =
+        edts ? FindBox(file.get(), edts->start, edts->end, "elst")
+             : std::nullopt;
+    if (!mdhd || !elst) return 0;
+    if (_fseeki64(file.get(), mdhd->start, SEEK_SET) != 0) return 0;
+    uint32_t mdhd_version_flags = 0;
+    if (!ReadBe32(file.get(), &mdhd_version_flags)) return 0;
+    const uint32_t mdhd_version = mdhd_version_flags >> 24;
+    if (_fseeki64(file.get(), mdhd_version == 1 ? 16 : 8, SEEK_CUR) != 0) {
+      return 0;
+    }
+    uint32_t timescale = 0;
+    if (!ReadBe32(file.get(), &timescale) || timescale == 0) return 0;
+    if (_fseeki64(file.get(), elst->start, SEEK_SET) != 0) return 0;
+    uint32_t elst_version_flags = 0;
+    uint32_t entries = 0;
+    if (!ReadBe32(file.get(), &elst_version_flags) ||
+        !ReadBe32(file.get(), &entries)) {
+      return 0;
+    }
+    const uint32_t elst_version = elst_version_flags >> 24;
+    for (uint32_t i = 0; i < entries; i++) {
+      int64_t media_time = -1;
+      if (elst_version == 1) {
+        if (_fseeki64(file.get(), 8, SEEK_CUR) != 0) return 0;
+        uint64_t raw_time = 0;
+        if (!ReadBe64(file.get(), &raw_time)) return 0;
+        media_time = static_cast<int64_t>(raw_time);
+      } else {
+        if (_fseeki64(file.get(), 4, SEEK_CUR) != 0) return 0;
+        uint32_t raw_time = 0;
+        if (!ReadBe32(file.get(), &raw_time)) return 0;
+        media_time = static_cast<int32_t>(raw_time);
+      }
+      // Skip media_rate_integer and media_rate_fraction.
+      if (_fseeki64(file.get(), 4, SEEK_CUR) != 0) return 0;
+      if (media_time >= 0) {
+        if (media_time > INT64_MAX / 1000000LL) return 0;
+        return (media_time * 1000000LL) / static_cast<int64_t>(timescale);
+      }
+    }
+    return 0;
+  }
+  return 0;
+}
+
 }  // namespace
 
 // One file's source reader, which converts every decoder output to 32-bit
@@ -53,13 +194,14 @@ class VideoFileReader {
   static std::unique_ptr<VideoFileReader> Open(const std::string& path,
                                                std::string* error) {
     auto reader = std::unique_ptr<VideoFileReader>(new VideoFileReader());
+    const std::wstring wide_path = Wide(path);
     ComPtr<IMFAttributes> attributes;
     HRESULT status = MFCreateAttributes(&attributes, 1);
     if (SUCCEEDED(status)) {
       status = attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
     }
     if (SUCCEEDED(status)) {
-      status = MFCreateSourceReaderFromURL(Wide(path).c_str(), attributes.Get(),
+      status = MFCreateSourceReaderFromURL(wide_path.c_str(), attributes.Get(),
                                            &reader->reader_);
     }
     if (FAILED(status)) {
@@ -112,6 +254,7 @@ class VideoFileReader {
       reader->duration_us_ = static_cast<int64_t>(duration.uhVal.QuadPart / 10);
     }
     PropVariantClear(&duration);
+    reader->shift_us_ = EditListStartUs(wide_path);
     return reader;
   }
 
@@ -167,12 +310,23 @@ class VideoFileReader {
       }
       buffer->Unlock();
       if (pixels.empty()) continue;
+      // 100-nanosecond units.
+      int64_t timestamp_us = static_cast<int64_t>(timestamp / 10);
+      if (!shifted_) {
+        // Never shift past the first frame, so Windows decoders that already
+        // apply the edit list keep zero-based timestamps and no timestamp goes
+        // negative.
+        if (timestamp_us < shift_us_) {
+          shift_us_ = timestamp_us > 0 ? timestamp_us : 0;
+        }
+        shifted_ = true;
+      }
+      timestamp_us -= shift_us_;
       EncodableList plane = {EncodableValue(std::move(pixels)),
                              EncodableValue(static_cast<int32_t>(width_ * 4)),
                              EncodableValue(4)};
       return EncodableMap{
-          // 100-nanosecond units.
-          {EncodableValue("timestampUs"), EncodableValue(static_cast<int64_t>(timestamp / 10))},
+          {EncodableValue("timestampUs"), EncodableValue(timestamp_us)},
           {EncodableValue("width"), EncodableValue(static_cast<int32_t>(width_))},
           {EncodableValue("height"), EncodableValue(static_cast<int32_t>(height_))},
           {EncodableValue("layout"), EncodableValue("bgra")},
@@ -251,6 +405,8 @@ class VideoFileReader {
   int rotation_ = 0;
   int64_t duration_us_ = 0;
   double frame_rate_ = 0;
+  int64_t shift_us_ = 0;
+  bool shifted_ = false;
 };
 
 // static
