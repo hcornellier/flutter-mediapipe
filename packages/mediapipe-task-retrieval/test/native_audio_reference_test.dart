@@ -3,11 +3,16 @@
 library;
 
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
 import 'package:test/test.dart';
+
+final _host =
+    '${Platform.operatingSystem}/${Abi.current().toString().split('_').last}';
 
 /// Google's full EmbeddingGemma 2 model, the only one that embeds audio;
 /// `make models_retrieval` downloads it.
@@ -89,6 +94,23 @@ void main() {
         hasLength(expected.length),
         reason: name,
       );
+      final reference = Embedding(
+        floatEmbedding: Float32List.fromList([
+          for (final v in expected) v.toDouble(),
+        ]),
+        headIndex: embedding.headIndex,
+      );
+      final cosine = UniversalEmbedder.cosineSimilarity(reference, embedding);
+      var maxDelta = 0.0;
+      for (var i = 0; i < expected.length; i++) {
+        maxDelta = max(
+          maxDelta,
+          (embedding.floatEmbedding![i] - expected[i]).abs().toDouble(),
+        );
+      }
+      // Each host's distance from the reference, before any check can stop
+      // the test, so the bounds can be set from what every host measures.
+      print('RETRIEVAL_AUDIO $_host $name cosine=$cosine maxDelta=$maxDelta');
       for (var i = 0; i < expected.length; i++) {
         expect(
           embedding.floatEmbedding![i],
@@ -96,22 +118,21 @@ void main() {
           reason: '$name[$i]',
         );
       }
-      final reference = Embedding(
-        floatEmbedding: Float32List.fromList([
-          for (final v in expected) v.toDouble(),
-        ]),
-        headIndex: embedding.headIndex,
-      );
       expect(
-        UniversalEmbedder.cosineSimilarity(reference, embedding),
+        cosine,
         greaterThan(cosineFloor),
         reason: '$name against Google\'s vector',
       );
       final texts = (clip['similarityToTexts'] as Map).cast<String, num>();
       for (final MapEntry(key: text, value: similarity) in texts.entries) {
         final sentence = (await embedder.embedText(text)).embeddings.single;
+        final score = UniversalEmbedder.cosineSimilarity(sentence, embedding);
+        print(
+          'RETRIEVAL_AUDIO_TEXT $_host $name '
+          'delta=${(score - similarity).abs()}',
+        );
         expect(
-          UniversalEmbedder.cosineSimilarity(sentence, embedding),
+          score,
           closeTo(similarity.toDouble(), tolerance),
           reason: '$name vs $text',
         );
@@ -149,6 +170,10 @@ void main() {
           final record = result.records.firstWhere(
             (r) => r.id == want[i]['id'],
             orElse: () => fail(why),
+          );
+          print(
+            'RETRIEVAL_AUDIO_RECORD $_host ${record.id} delta='
+            '${(record.score - (want[i]['score'] as num)).abs()}',
           );
           expect(
             record.score,
