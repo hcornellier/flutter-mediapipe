@@ -62,11 +62,16 @@ void main() {
       : 'No EmbeddingGemma 2 model at $_model; set '
             'MEDIAPIPE_RETRIEVAL_AUDIO_MODEL.';
   // Google's audio embeddings vary from call to call, in its Python as here,
-  // by up to about 0.005 per value and 0.004 in a score, and Windows arm64
-  // sits around cosine 0.997 against the macOS reference, so audio gets bounds
-  // that hold on every host, and records are compared as a set.
-  const tolerance = 0.01;
-  const cosineFloor = 0.995;
+  // by up to about 0.005 per value and 0.004 in a score, so audio gets bounds
+  // that hold on every host, and records are compared as a set. Measured
+  // over five runs on each CI host (the RETRIEVAL_AUDIO records below), every
+  // host but one sits at cosine 0.9984 or above and within 0.008 per value;
+  // Windows arm64's speech clip sits at 0.99727 and 0.0097, the same in every
+  // run, so that host alone gets wider bounds.
+  final windowsArm64 = _host == 'windows/arm64';
+  final tolerance = windowsArm64 ? 0.015 : 0.01;
+  final cosineFloor = windowsArm64 ? 0.996 : 0.998;
+  const scoreTolerance = 0.01;
   final clips = (_reference['audio']! as Map).cast<String, Map>();
   // The audio package's clips, from the repository root.
   final root = Directory.current.parent.parent;
@@ -133,7 +138,7 @@ void main() {
         );
         expect(
           score,
-          closeTo(similarity.toDouble(), tolerance),
+          closeTo(similarity.toDouble(), scoreTolerance),
           reason: '$name vs $text',
         );
       }
@@ -177,7 +182,7 @@ void main() {
           );
           expect(
             record.score,
-            closeTo((want[i]['score'] as num).toDouble(), tolerance),
+            closeTo((want[i]['score'] as num).toDouble(), scoreTolerance),
             reason: why,
           );
           expect(
