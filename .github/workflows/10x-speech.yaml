@@ -1,0 +1,50 @@
+name: 10x speech (throwaway)
+
+on:
+  push:
+    branches: [ci/v050-10x-speech]
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: speech / ${{ matrix.os }} x10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04, windows-2025, ubuntu-24.04-arm, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'true'
+          linux-profile: ffi
+      - name: Download Google's models and its Python answers
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        run: |
+          flutter pub get
+          models="parakeet_tdt_v3 phonon pocket_tts_en"
+          if [ "$RUNNER_OS" = macOS ]; then models="$models kokoro"; fi
+          dart tool/download_models.dart $models
+          echo "MEDIAPIPE_REQUIRED_MODELS=$models" >> "$GITHUB_ENV"
+          python=python3; if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+          "$python" -B tool/prepare_speech_reference.py --output-dir "$GITHUB_WORKSPACE/build/audio-reference"
+          echo "MEDIAPIPE_SPEECH_REFERENCE_DIR=$GITHUB_WORKSPACE/build/audio-reference" >> "$GITHUB_ENV"
+      - name: Pub get
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        run: if [ -f pubspec.yaml ]; then flutter pub get; fi
+      - name: speech x10 in a row
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        run: |
+          pass=0
+          for i in $(seq 1 10); do
+            if dart test test/speech_test.dart --timeout 180s --reporter expanded; then pass=$((pass+1)); echo "COUNT_RUN $i pass"; else echo "COUNT_RUN $i FAIL"; fi
+          done
+          echo "COUNT speech ${{ matrix.os }} $pass of 10"
+          [ "$pass" = 10 ]
