@@ -1,197 +1,120 @@
 name: iOS simulator CPU tasks
-
+'on':
+  push:
+    branches:
+    - ci/v050-journey-targeted
 permissions:
   contents: read
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
-  # nightly-compare.yaml: once on the pinned build, once on a nightly.
-  workflow_call:
-    inputs:
-      side:
-        description: baseline (the pins on this ref) or nightly (the run's nightly-pin artifact).
-        type: string
-        required: true
-
-# A newer push to a pull request supersedes its queued matrix; the hosted macOS
-# pool is small enough that stale runs otherwise starve the latest one. A push
-# to main is keyed by its commit and never cancelled: GitHub marks a commit
-# failed when one of its runs is cancelled.
-concurrency:
-  group: ios-simulator-${{ github.event_name == 'push' && github.sha || github.ref }}${{ inputs.side && format('-nightly-{0}-{1}', inputs.side, github.run_id) || '' }}
-  cancel-in-progress: true
-
-# nightly-compare.yaml calls this workflow twice in one run, on the pinned
-# build and on Google's nightly; the suffix keeps the two calls' artifacts
-# apart. It is empty in every other run.
 env:
-  ARTIFACT_SUFFIX: ${{ inputs.side && format('-{0}', inputs.side) || '' }}
-
+  ARTIFACT_SUFFIX: ''
 jobs:
-  # Every family through Google's iOS libraries in one app: the vision tasks,
-  # text and audio, EmbeddingGemma, Proofreader and Summarizer, Decision
-  # Maker, the retrieval tasks and the speech tasks, so this job needs no
-  # source build. The simulator
-  # runs them on the CPU only: Google's MediaPipe aborts in its Metal
-  # preprocessing there. Metal is a phone check.
   sdk-tasks:
     name: Every phone suite / official iOS SDK on an arm64 simulator
     runs-on: macos-15
-    # About an hour; 85 minutes on a slow runner (November 20, 2026) whose
-    # gallery journey stopped at 15, and the journey may now take 40 (below).
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - if: inputs.side == 'nightly'
-        uses: ./.github/actions/nightly-pin
-      - uses: ./.github/actions/setup
-        with:
-          official-wheel-cache: 'true'
-          modern-model-cache: 'true'
-      - name: Make flutter test wait for the simulator log reader
-        run: python3 -B tool/ci/patch_flutter_simulator_launch.py
-      - name: Download the vision task models
-        working-directory: packages/mediapipe-task-vision
-        run: |
-          dart pub get
-          dart tool/download_models.dart
-      # Google's answers for its iOS libraries: its macOS arm64 wheel of the
-      # same release on this arm64 runner.
-      - name: Google's references for EmbeddingGemma, Proofreader and Summarizer
-        run: |
-          cd packages/mediapipe-task-text
-          dart pub get
-          dart tool/download_models.dart embedding_gemma proofreader summarizer
-          cd ../..
-          python3 -B packages/mediapipe-task-text/tool/prepare_modern_text_reference.py \
-            --venv build/ci-tmp/official-python \
-            --output-dir build/modern-text-reference
-      - name: Prepare the gallery with the phone suites' tasks
-        run: |
-          dart run tool/gallery_builder/bin/prepare_gallery.dart --target ios-simulator/arm64 \
-            --tasks face_landmarker,hand_landmarker,pose_landmarker,gesture_recognizer,holistic_landmarker,face_detector,object_detector,image_classifier,image_embedder,image_segmenter,interactive_segmenter,audio_classifier,language_detector,text_classifier,text_embedder,embedding_gemma,text_proofreader,text_summarizer,universal_embedder,semantic_retriever,decision_maker,audio_transcriber,text_to_speech \
-            --modern-text-reference build/modern-text-reference
-          cd gallery && flutter pub get
-      - name: Boot an installed iPhone simulator
-        id: simulator
-        run: |
-          device=$(python3 - <<'PY'
-          import json, subprocess
-          devices = json.loads(subprocess.check_output(
-              ['xcrun', 'simctl', 'list', 'devices', 'available', '--json'], text=True))['devices']
-          candidates = [d for runtime, entries in devices.items() if '.iOS-' in runtime
-                        for d in entries if d['name'].startswith('iPhone')]
-          if not candidates:
-              raise SystemExit('No installed iPhone simulator runtime')
-          print(candidates[0]['udid'])
-          PY
-          )
-          xcrun simctl boot "$device"
-          xcrun simctl bootstatus "$device" -b
-          echo "device=$device" >> "$GITHUB_OUTPUT"
-      - name: Official references, pixel formats, rotation, VIDEO and every live tile
-        id: sdk
-        working-directory: gallery
-        shell: bash
-        env:
-          DEVICE: ${{ steps.simulator.outputs.device }}
-        run: |
-          for test in sdk_face_landmarker_test sdk_hand_landmarker_test sdk_landmark_tasks_test sdk_detection_tasks_test task_models_test sdk_embedder_test sdk_segmenter_test sdk_interactive_segmenter_test decision_maker_test retrieval_test speech_test gallery_journey_test runtime_test face_landmarker_still_image_test; do
-            # Each file finishes in minutes, so 15 is a stall. The gallery
-            # journey first downloads every first-use model, each within its
-            # own limit (gallery_journey_test.dart), which took 15 minutes on
-            # a slow runner (November 20, 2026), so it gets 40.
-            limit=900
-            if [ "$test" = gallery_journey_test ]; then limit=2400; fi
-            # The decision, retrieval and speech suites leave the app
-            # installed, so the journey right after them finds the 1.7 GB of
-            # models they downloaded in its store instead of downloading
-            # them again. The journey uninstalls it, so the suites after it
-            # start on a fresh install.
-            keep=
-            case $test in decision_maker_test|retrieval_test|speech_test) keep=--no-uninstall ;; esac
-            bash tool/test_ios_simulator_suite.sh "$DEVICE" "$limit" "$test" --dart-define=SDK_GPU=skip $keep
-          done
-      - name: Record ios CPU task coverage (ios-sdk-simulator)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator
-          platform: ios
-          delegate: cpu
-          tasks: face_detector,face_landmarker,gesture_recognizer,hand_landmarker,holistic_landmarker,image_classifier,image_embedder,image_segmenter,interactive_segmenter,object_detector,pose_landmarker
-          outcome: ${{ steps.sdk.outcome }}
-      # Text and audio run in the same SDK adapter, which core's runtime
-      # resolves to on iOS.
-      - name: Text and audio through Google's iOS SDK
-        id: text_audio
-        if: ${{ !cancelled() && steps.simulator.outcome == 'success' }}
-        working-directory: gallery
-        shell: bash
-        env:
-          DEVICE: ${{ steps.simulator.outputs.device }}
-        run: bash tool/test_ios_simulator_suite.sh "$DEVICE" 900 sdk_text_audio_test --dart-define=SDK_GPU=skip
-      - name: Record ios CPU retrieval coverage (ios-sdk-simulator-retrieval)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator-retrieval
-          platform: ios
-          delegate: cpu
-          tasks: universal_embedder,semantic_retriever
-          outcome: ${{ steps.sdk.outcome }}
-      - name: Record ios CPU Decision Maker coverage (ios-sdk-simulator-decision)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator-decision
-          platform: ios
-          delegate: cpu
-          tasks: decision_maker
-          outcome: ${{ steps.sdk.outcome }}
-      - name: Record ios CPU speech coverage (ios-sdk-simulator-speech)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator-speech
-          platform: ios
-          delegate: cpu
-          tasks: audio_transcriber,text_to_speech
-          outcome: ${{ steps.sdk.outcome }}
-      - name: Record ios CPU text and audio coverage (ios-sdk-simulator-text-audio)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator-text-audio
-          platform: ios
-          delegate: cpu
-          tasks: audio_classifier,language_detector,text_classifier,text_embedder
-          outcome: ${{ steps.text_audio.outcome }}
-      # The generative text tasks and EmbeddingGemma through the same adapter,
-      # against Google's wheel's answers generated above.
-      - name: EmbeddingGemma, Proofreader and Summarizer through Google's iOS SDK
-        id: modern_text
-        if: ${{ !cancelled() && steps.simulator.outcome == 'success' }}
-        working-directory: gallery
-        shell: bash
-        env:
-          DEVICE: ${{ steps.simulator.outputs.device }}
-        run: bash tool/test_ios_simulator_suite.sh "$DEVICE" 1800 sdk_modern_text_test
-      - name: Record ios CPU modern text coverage (ios-sdk-simulator-modern-text)
-        if: always()
-        uses: ./.github/actions/record-coverage
-        with:
-          suite: ios-sdk-simulator-modern-text
-          platform: ios
-          delegate: cpu
-          tasks: embedding_gemma,text_proofreader,text_summarizer
-          outcome: ${{ steps.modern_text.outcome }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: ios-simulator-sdk-tasks${{ env.ARTIFACT_SUFFIX }}
-          path: gallery/sdk-ios-simulator.log
-          if-no-files-found: warn
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: ./.github/actions/setup
+      with:
+        official-wheel-cache: 'true'
+        modern-model-cache: 'true'
+    - name: Make flutter test wait for the simulator log reader
+      run: python3 -B tool/ci/patch_flutter_simulator_launch.py
+    - name: Download the vision task models
+      working-directory: packages/mediapipe-task-vision
+      run: 'dart pub get
+
+        dart tool/download_models.dart
+
+        '
+    - name: Google's references for EmbeddingGemma, Proofreader and Summarizer
+      run: "cd packages/mediapipe-task-text\ndart pub get\ndart tool/download_models.dart embedding_gemma proofreader summarizer\ncd ../..\npython3 -B packages/mediapipe-task-text/tool/prepare_modern_text_reference.py \\\n  --venv build/ci-tmp/official-python \\\n  --output-dir build/modern-text-reference\n"
+    - name: Prepare the gallery with the phone suites' tasks
+      run: "dart run tool/gallery_builder/bin/prepare_gallery.dart --target ios-simulator/arm64 \\\n  --tasks face_landmarker,hand_landmarker,pose_landmarker,gesture_recognizer,holistic_landmarker,face_detector,object_detector,image_classifier,image_embedder,image_segmenter,interactive_segmenter,audio_classifier,language_detector,text_classifier,text_embedder,embedding_gemma,text_proofreader,text_summarizer,universal_embedder,semantic_retriever,decision_maker,audio_transcriber,text_to_speech \\\n  --modern-text-reference build/modern-text-reference\ncd gallery && flutter pub get\n"
+    - name: Boot an installed iPhone simulator
+      id: simulator
+      run: "device=$(python3 - <<'PY'\nimport json, subprocess\ndevices = json.loads(subprocess.check_output(\n    ['xcrun', 'simctl', 'list', 'devices', 'available', '--json'], text=True))['devices']\ncandidates = [d for runtime, entries in devices.items() if '.iOS-' in runtime\n              for d in entries if d['name'].startswith('iPhone')]\nif not candidates:\n    raise SystemExit('No installed iPhone simulator runtime')\nprint(candidates[0]['udid'])\nPY\n)\nxcrun simctl boot \"$device\"\nxcrun simctl bootstatus \"$device\" -b\necho \"device=$device\" >> \"$GITHUB_OUTPUT\"\n"
+    - name: Official references, pixel formats, rotation, VIDEO and every live tile
+      id: sdk
+      working-directory: gallery
+      shell: bash
+      env:
+        DEVICE: ${{ steps.simulator.outputs.device }}
+      run: "for test in sdk_face_landmarker_test sdk_hand_landmarker_test sdk_landmark_tasks_test sdk_detection_tasks_test task_models_test sdk_embedder_test sdk_segmenter_test sdk_interactive_segmenter_test decision_maker_test retrieval_test speech_test gallery_journey_test runtime_test face_landmarker_still_image_test; do\n  # Each file finishes in minutes, so 15 is a stall. The gallery\n  # journey first downloads every first-use model, each within its\n  # own limit (gallery_journey_test.dart), which took 15 minutes on\n  # a slow runner (November 20, 2026), so it gets 40.\n  limit=900\n  if [ \"$test\" = gallery_journey_test ]; then limit=2400; fi\n  # The decision, retrieval and speech suites leave the app\n  # installed, so the journey right after them finds the 1.7 GB of\n  # models they downloaded in its store instead of downloading\n  # them again. The journey uninstalls it, so the suites after it\n  # start on a fresh install.\n  keep=\n  case $test in decision_maker_test|retrieval_test|speech_test)\
+        \ keep=--no-uninstall ;; esac\n  bash tool/test_ios_simulator_suite.sh \"$DEVICE\" \"$limit\" \"$test\" --dart-define=SDK_GPU=skip $keep\ndone\n"
+    - name: Record ios CPU task coverage (ios-sdk-simulator)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator
+        platform: ios
+        delegate: cpu
+        tasks: face_detector,face_landmarker,gesture_recognizer,hand_landmarker,holistic_landmarker,image_classifier,image_embedder,image_segmenter,interactive_segmenter,object_detector,pose_landmarker
+        outcome: ${{ steps.sdk.outcome }}
+    - name: Text and audio through Google's iOS SDK
+      id: text_audio
+      if: ${{ !cancelled() && steps.simulator.outcome == 'success' }}
+      working-directory: gallery
+      shell: bash
+      env:
+        DEVICE: ${{ steps.simulator.outputs.device }}
+      run: bash tool/test_ios_simulator_suite.sh "$DEVICE" 900 sdk_text_audio_test --dart-define=SDK_GPU=skip
+    - name: Record ios CPU retrieval coverage (ios-sdk-simulator-retrieval)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator-retrieval
+        platform: ios
+        delegate: cpu
+        tasks: universal_embedder,semantic_retriever
+        outcome: ${{ steps.sdk.outcome }}
+    - name: Record ios CPU Decision Maker coverage (ios-sdk-simulator-decision)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator-decision
+        platform: ios
+        delegate: cpu
+        tasks: decision_maker
+        outcome: ${{ steps.sdk.outcome }}
+    - name: Record ios CPU speech coverage (ios-sdk-simulator-speech)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator-speech
+        platform: ios
+        delegate: cpu
+        tasks: audio_transcriber,text_to_speech
+        outcome: ${{ steps.sdk.outcome }}
+    - name: Record ios CPU text and audio coverage (ios-sdk-simulator-text-audio)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator-text-audio
+        platform: ios
+        delegate: cpu
+        tasks: audio_classifier,language_detector,text_classifier,text_embedder
+        outcome: ${{ steps.text_audio.outcome }}
+    - name: EmbeddingGemma, Proofreader and Summarizer through Google's iOS SDK
+      id: modern_text
+      if: ${{ !cancelled() && steps.simulator.outcome == 'success' }}
+      working-directory: gallery
+      shell: bash
+      env:
+        DEVICE: ${{ steps.simulator.outputs.device }}
+      run: bash tool/test_ios_simulator_suite.sh "$DEVICE" 1800 sdk_modern_text_test
+    - name: Record ios CPU modern text coverage (ios-sdk-simulator-modern-text)
+      if: always()
+      uses: ./.github/actions/record-coverage
+      with:
+        suite: ios-sdk-simulator-modern-text
+        platform: ios
+        delegate: cpu
+        tasks: embedding_gemma,text_proofreader,text_summarizer
+        outcome: ${{ steps.modern_text.outcome }}
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ios-simulator-sdk-tasks${{ env.ARTIFACT_SUFFIX }}
+        path: gallery/sdk-ios-simulator.log
+        if-no-files-found: warn
