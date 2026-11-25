@@ -2,8 +2,7 @@ name: Web vision tasks
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [ci/v050-web]
   workflow_dispatch:
     inputs:
       deploy_only:
