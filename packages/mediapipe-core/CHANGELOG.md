@@ -1,3 +1,10 @@
+## 0.5.1
+
+- Upgrade every mediapipe package to 0.5.1 together. MediaPipe stays at
+  1.2.3 and its option structs keep their layout, so the build still
+  accepts family releases from 0.3.0.
+- No change to this package.
+
 ## 0.5.0
 
 - Upgrade every mediapipe package to 0.5.0 together. MediaPipe stays at

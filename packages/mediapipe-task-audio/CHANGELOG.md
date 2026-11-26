@@ -1,3 +1,9 @@
+## 0.5.1
+
+- Upgrade every mediapipe package to 0.5.1 together, so this package now
+  requires `mediapipe_core` ^0.5.1. MediaPipe stays at 1.2.3.
+- No change to this package.
+
 ## 0.5.0
 
 - Upgrade every mediapipe package to 0.5.0 together, so this package now

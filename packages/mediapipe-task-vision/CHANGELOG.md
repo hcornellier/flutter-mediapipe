@@ -1,3 +1,13 @@
+## 0.5.1
+
+- Upgrade every mediapipe package to 0.5.1 together, so this package now
+  requires `mediapipe_core` ^0.5.1. MediaPipe stays at 1.2.3.
+- On Android the GPU's name is now read through FFI, from EGL and OpenGL
+  ES, instead of through a Java plugin. The name still decides which tasks
+  offer the GPU on a device, and it keeps the form `renderer (vendor)`.
+- The package no longer contains Java or Gradle code. Tasks ran through
+  FFI already, and apps need no change.
+
 ## 0.5.0
 
 - Upgrade every mediapipe package to 0.5.0 together, so this package now
