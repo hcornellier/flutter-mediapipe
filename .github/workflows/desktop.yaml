@@ -220,6 +220,15 @@ jobs:
         run: |
           dart pub get
           dart tool/download_models.dart face_detector face_landmarker hand_landmarker gesture_recognizer pose_landmarker holistic_landmarker image_classifier image_embedder object_detector image_segmenter
+      # The probe that names an Android GPU, on this host's EGL and OpenGL ES:
+      # the same API, so Mesa checks every binding and the whole sequence
+      # (test/gpu_name_test.dart).
+      - name: The Android GPU name probe on Mesa
+        working-directory: packages/mediapipe-task-vision
+        env:
+          EGL_PLATFORM: surfaceless
+          MEDIAPIPE_REQUIRE_GPU_NAME: '1'
+        run: dart test test/gpu_name_test.dart --reporter expanded
       - name: Official GPU references and Dart GPU suites on llvmpipe
         id: linux_gpu
         env:
@@ -312,6 +321,15 @@ jobs:
         run: |
           dart pub get
           dart tool/download_models.dart face_detector face_landmarker hand_landmarker gesture_recognizer pose_landmarker holistic_landmarker image_classifier image_embedder object_detector image_segmenter
+      # The probe that names an Android GPU, on this host's EGL and OpenGL ES:
+      # the same API, so Mesa checks every binding and the whole sequence
+      # (test/gpu_name_test.dart).
+      - name: The Android GPU name probe on Mesa
+        working-directory: packages/mediapipe-task-vision
+        env:
+          EGL_PLATFORM: surfaceless
+          MEDIAPIPE_REQUIRE_GPU_NAME: '1'
+        run: dart test test/gpu_name_test.dart --reporter expanded
       - name: Official GPU references and Dart GPU suites on llvmpipe
         id: linux_arm64_gpu
         env:

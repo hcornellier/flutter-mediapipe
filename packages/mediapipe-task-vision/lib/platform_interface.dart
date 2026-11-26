@@ -1,6 +1,6 @@
 /// Where the browser plugin plugs Google's JavaScript runtime into the vision
 /// task classes: the backend interfaces and factories, and the decoder its
-/// results go through. The Android plugin installs only the GPU name reader.
+/// results go through. On Android only the GPU name reader is installed.
 ///
 /// Applications should import `mediapipe_vision.dart` instead.
 library;

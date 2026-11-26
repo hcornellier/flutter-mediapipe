@@ -46,8 +46,6 @@ flutter:
   plugin:
     platforms:
       android:
-        package: dev.mediapipe.flutter.vision
-        pluginClass: MediaPipeVisionPlugin
         dartPluginClass: MediaPipeVisionAndroid
         dartFileName: mediapipe_vision_android.dart
       web:
