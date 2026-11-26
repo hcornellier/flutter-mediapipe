@@ -1,0 +1,71 @@
+name: Windows GPU probe
+
+permissions:
+  contents: read
+
+# An experiment: whether Google's Windows audio and decision libraries take
+# the GPU delegate on GitHub's Windows runners, and what they answer.
+on:
+  push:
+    branches: [ci/win-gpu-probe]
+
+jobs:
+  probe:
+    name: probe / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: 'false'
+      - name: Display adapters
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_VideoController | Format-List Name, AdapterCompatibility, DriverVersion, AdapterRAM, VideoProcessor, Status
+          Get-CimInstance Win32_Processor | Format-List Name, NumberOfCores
+      - name: Download the models
+        shell: bash
+        run: |
+          (cd packages/mediapipe-task-audio && flutter pub get && dart tool/download_models.dart parakeet_tdt_v3 kokoro)
+          (cd packages/mediapipe-task-decision && flutter pub get && dart tool/download_models.dart laya_s256)
+      - name: Transcriber CPU
+        if: always()
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        env: {PROBE_TASK: transcriber, PROBE_DELEGATE: cpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded
+      - name: Transcriber GPU
+        if: always()
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        env: {PROBE_TASK: transcriber, PROBE_DELEGATE: gpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded
+      - name: Kokoro CPU
+        if: always()
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        env: {PROBE_TASK: tts, PROBE_DELEGATE: cpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded
+      - name: Kokoro GPU
+        if: always()
+        working-directory: packages/mediapipe-task-audio
+        shell: bash
+        env: {PROBE_TASK: tts, PROBE_DELEGATE: gpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded
+      - name: Decision CPU
+        if: always()
+        working-directory: packages/mediapipe-task-decision
+        shell: bash
+        env: {PROBE_DELEGATE: cpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded
+      - name: Decision GPU
+        if: always()
+        working-directory: packages/mediapipe-task-decision
+        shell: bash
+        env: {PROBE_DELEGATE: gpu}
+        run: dart test test/win_gpu_probe_test.dart --reporter expanded

@@ -100,6 +100,8 @@ bool _webGpuProved(TaskPlatform platform) =>
 const transcriberGpuTargets = <String, String?>{
   'macos/arm64': '14.0',
   'ios/arm64': '15.0',
+  'windows/x64': null,
+  'windows/arm64': null,
 };
 
 /// Where Audio Transcriber runs: Google's audio library on 64-bit Android,
@@ -152,7 +154,11 @@ TaskCapabilities audioTranscriberCapabilitiesForPlatform(
 /// 15, the only version CI runs. Kokoro has never run on macOS 14, so it
 /// gets the CPU there. A model with no GPU section, such as Phonon, is
 /// refused the GPU when the task is created.
-const textToSpeechGpuTargets = <String, String?>{'macos/arm64': '15.0'};
+const textToSpeechGpuTargets = <String, String?>{
+  'macos/arm64': '15.0',
+  'windows/x64': null,
+  'windows/arm64': null,
+};
 
 /// Where Text to Speech runs: Google's audio library on 64-bit Android, iOS
 /// 15+, macOS 14+ arm64, Linux x64 and arm64, and Windows x64 and arm64, and

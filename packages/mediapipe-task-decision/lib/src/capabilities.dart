@@ -100,6 +100,8 @@ TaskCapabilities decisionMakerCapabilitiesForPlatform(
       Delegate.cpu: decisionRuntimeTargets,
       Delegate.gpu: {
         if (browserRuns && browserRefusal == null) 'web/unknown': null,
+        'windows/x64': null,
+        'windows/arm64': null,
       },
     },
     unavailableReasons: {
