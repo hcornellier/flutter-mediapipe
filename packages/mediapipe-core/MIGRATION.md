@@ -8,7 +8,7 @@ and FFI plumbing of its `mediapipe_text` 0.0.1. This package's first release,
 which re-exports `mediapipe_core.dart`; plugins and family packages use
 `platform_interface.dart`.
 
-| Google's 0.0.1 | 0.1.0 |
+| Google's 0.0.1 | 0.1.0 and later |
 | --- | --- |
 | `BaseOptions.path(p)`, `BaseOptions.memory(bytes)` | `modelPath: p` or `modelBytes: bytes` on the task's options (core's `TaskOptions`), or a pinned official model with `model:` |
 | `ClassifierOptions(...)`, `EmbedderOptions(...)` | Their settings sit directly on the classifier's or embedder's options |

@@ -91,42 +91,47 @@ A journey that loses its page runs once more and prints a `::warning::`, so
 read the output even when it passes: a crash can be a real memory bug, and
 `build/ci-tmp/gallery-journey-webkit/report-lost-page.json` says where it went.
 
-## Versions and the first release
+## Versions and releases
 
-The first release is 0.1.0 of `mediapipe_core`, `mediapipe_vision`,
-`mediapipe_text`, `mediapipe_audio`, `mediapipe_decision` and
-`mediapipe_retrieval`, published together.
+`mediapipe_core`, `mediapipe_vision`, `mediapipe_text`, `mediapipe_audio`,
+`mediapipe_decision` and `mediapipe_retrieval` share one version and are
+published together: a release moves all six, whichever of them changed.
+`tool/check_repository.py` fails when their versions, or their SDK and Flutter
+constraints, differ.
 
-On pub.dev, `mediapipe_core` and `mediapipe_text` are Google's 0.0.1 previews
-from May 2024, published from
-[google/flutter-mediapipe](https://github.com/google/flutter-mediapipe).
-Only their uploaders can publish new versions of these names, and the next
-version must be above 0.0.1. Under Dart's rules for versions before 1.0, the minor version
-marks a breaking change, so 0.1.0 is the version that follows Google's
-previews. `mediapipe_vision`, `mediapipe_audio`, `mediapipe_decision` and
-`mediapipe_retrieval` were free names on October 9, 2026, kept at 0.1.0 so
-all six release together.
+While the packages are below 1.0, Dart's version rules make the minor version
+the breaking one: an app's `^0.x.y` constraint accepts later patch releases of
+0.x and stops before the next minor. A change that can break an app takes a
+new minor version; anything else can ship as a patch.
 
-Until 0.1.0 is on pub.dev:
+For every release:
 
-- Every package stays at `version: 0.1.0`, however much changes.
-- Each CHANGELOG has one section, `## 0.1.0`, describing the package as it
-  ships. Edit that section; do not add version sections, and do not call a
-  change breaking or list what it renamed, since no release came before it.
-- `MIGRATION.md` covers only Google's published 0.0.1 API. Changes between
-  unpublished states never need a migration note.
+- Each package's `CHANGELOG.md` gets a `## <version>` section, also when that
+  package itself did not change. Write it before releasing: the release
+  tooling adds a placeholder to a changelog that lacks one.
+- `MIGRATION.md` covers moving from Google's 0.0.1 previews of
+  `mediapipe_core` and `mediapipe_text`. The changelogs describe what changes
+  between this repository's own releases.
 
 The pubspecs are publishable as checked in: no `publish_to: none`, and each
-family depends on `mediapipe_core: ^0.1.0`, as its published copy must. A
-checked-in `pubspec_overrides.yaml` beside each family pubspec (and in the
-sample, the benchmarks and every generated consumer app) points
-`mediapipe_core` at the sibling package instead, so a checkout builds against
-itself; pub leaves that file out of the published archive. Before publishing, run `publish_check.py`, `check_archives.py` and the
-bundled-model check above, then publish `mediapipe_core` first and the five
-families after it (`.github/workflows/release.yaml` updates the package
-versions, tags `v<version>`, runs those checks and publishes through
-`tool/ci/publish_packages.py` when a GitHub Release is published or the
-workflow is dispatched).
+family depends on `mediapipe_core` at the shared version (`^<version>`), as
+its published copy must. A checked-in `pubspec_overrides.yaml` beside each
+family pubspec (and in the sample, the benchmarks and every generated consumer
+app) points `mediapipe_core` at the sibling package instead, so a checkout
+builds against itself; pub leaves that file out of the published archive.
+
+Before releasing, run `publish_check.py`, `check_archives.py` and the
+bundled-model check above. `.github/workflows/release.yaml` then publishes:
+it runs when a `v<version>` tag is pushed, which creating a GitHub Release
+with a new tag does, or when it is dispatched by hand with a version, as a dry
+run unless `dry_run` is turned off. Through `tool/ci/publish_packages.py` it
+sets that version in every pubspec, in each family's `mediapipe_core`
+constraint and where the READMEs and guides name it; runs the repository,
+docs, analysis, format and API parity checks and the pub dry run; builds an
+app from the archives for all six targets; commits and tags the version
+change; and publishes `mediapipe_core` first and the five families after it.
+A package already on pub.dev at that version is skipped, so a failed release
+can be run again.
 
 ## How to add a task
 
