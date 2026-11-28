@@ -207,7 +207,7 @@ the history (`git show 4b4ab7a:debloat-plan.md`). Still open:
   requires them by those names. The Android 9 job can join it once it has
   passed on `main`.
 - **Publish.** 0.1.0 of the six packages, as `CONTRIBUTING.md` ("Versions
-  and the first release") describes. The pubspecs are publishable as checked
+  and releases") describes. The pubspecs are publishable as checked
   in (no `publish_to: none`, families on `mediapipe_core: ^0.1.0` with a
   checked-in `pubspec_overrides.yaml` for the checkout); `publish_check.py`
   and `test_bundled_models.py` run first, then `mediapipe_core` publishes and

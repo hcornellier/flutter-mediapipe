@@ -5,7 +5,7 @@ release, 0.1.0, replaces its API. Import only
 `package:mediapipe_text/mediapipe_text.dart`; it re-exports what apps need from
 `mediapipe_core`, so apps no longer import `mediapipe_core.dart` themselves.
 
-| Google's 0.0.1 | 0.1.0 |
+| Google's 0.0.1 | 0.1.0 and later |
 | --- | --- |
 | `TextClassifier(options)`, `TextEmbedder(options)`, `LanguageDetector(options)` | `await TextClassifier.create(options)` and so on |
 | `TextClassifierOptions(baseOptions: BaseOptions.path(p))`, `.fromAssetPath(p)` | `TextClassifierOptions(modelPath: p)`, likewise for every task, or a pinned official model with `model: TextModels.bertClassifier` |

@@ -5,7 +5,7 @@ so a new family reaches them. This checks the rest:
 
 - **Lists by family:** the README's support table (a row per family, and a ✓
   wherever the coverage matrix has a cell that is not unsupported),
-  CONTRIBUTING's first release, core's bundlable and web runtime families,
+  CONTRIBUTING's versions section, core's bundlable and web runtime families,
   each family's Makefile targets and coverage-matrix test, and the
   bundled-models test's subset.
 - **Pins that move together:** the packages' versions and SDK and Flutter
@@ -76,11 +76,11 @@ def family_lists(problems):
         if not re.search(r'^\| ' + family.capitalize() + r'\b', table, re.M):
             problems.append(f'README.md: "Where it runs" has no {family} row')
     contributing = read('CONTRIBUTING.md')
-    release = contributing[contributing.index('## Versions and the first release'):]
+    release = contributing[contributing.index('## Versions and releases'):]
     release = release[:release.index('\n## ', 1)]
     for family in families:
         if f'mediapipe_{family}' not in release:
-            problems.append(f'CONTRIBUTING.md: the first release does not name mediapipe_{family}')
+            problems.append(f'CONTRIBUTING.md: "Versions and releases" does not name mediapipe_{family}')
     # bin/web_runtime.dart reads the same table.
     source = 'packages/mediapipe-core/lib/src/model_bundler.dart'
     text = read(source)
